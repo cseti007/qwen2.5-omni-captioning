@@ -1,0 +1,32 @@
+# =============================================================================
+# VLLM Qwen2.5-Omni Video Captioning Configuration
+# =============================================================================
+
+[model]
+name = "Qwen/Qwen2.5-Omni-7B-AWQ"
+model_path = "./models/Qwen2.5-Omni-7B-AWQ"
+trust_remote_code = true
+dtype = "auto"
+max_model_len = 8192
+
+[hardware]
+gpu_memory_utilization = 0.9
+tensor_parallel_size = 1
+
+[generation]
+temperature = 0.7
+max_tokens = 512
+top_p = 0.9
+
+[paths]
+input_dir = "./videos"
+output_dir = "./captions"
+video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
+
+[processing]
+batch_size = 1
+use_audio_in_video = true
+
+[prompts]
+system_prompt = "You are a helpful assistant that describes videos in detail."
+user_prompt = "Please describe this video in detail, including what you see and hear."
