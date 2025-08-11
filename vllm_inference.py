@@ -22,9 +22,7 @@ class ConversationManager:
     
     def get_history(self, media_path: str) -> List[Dict[str, Any]]:
         """Get conversation history for a media file"""
-        if media_path not in self.histories:
-            self.histories[media_path] = []
-        return self.histories[media_path].copy()
+        return self.histories.get(media_path, [])
     
     def add_message(self, media_path: str, role: str, content: str):
         """Add a message to conversation history"""
@@ -34,11 +32,8 @@ class ConversationManager:
     
     def get_previous_caption(self, media_path: str) -> str:
         """Get the last assistant message from conversation history"""
-        history = self.get_history(media_path)
-        for msg in reversed(history):
-            if msg["role"] == "assistant":
-                return msg["content"]
-        return ""
+        history = self.histories.get(media_path, [])
+        return history[-1]["content"] if history and history[-1]["role"] == "assistant" else ""
     
     def clear(self):
         """Clear all conversation histories"""
@@ -80,53 +75,39 @@ class MediaLoader:
     @staticmethod
     def load_image(image_path: str) -> np.ndarray:
         """Load image file as numpy array"""
-        try:
-            image = Image.open(image_path).convert('RGB')
-            image_array = np.array(image)
-            logging.info(f"Loaded image {Path(image_path).name} with shape: {image_array.shape}")
-            return image_array
-        except Exception as e:
-            logging.error(f"Failed to load image {Path(image_path).name}: {e}")
-            raise
+        image = Image.open(image_path).convert('RGB')
+        return np.array(image)
     
     @staticmethod
     def load_video(video_path: str, num_frames: int = 16) -> np.ndarray:
         """Load video file as numpy array"""
-        try:
-            cap = cv2.VideoCapture(video_path)
-            if not cap.isOpened():
-                raise ValueError(f"Cannot open video file: {video_path}")
-            
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            if total_frames == 0:
-                raise ValueError(f"Video has no frames: {video_path}")
-            
-            # Calculate frame indices
-            if num_frames >= total_frames:
-                frame_indices = list(range(total_frames))
-            else:
-                frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
-            
-            frames = []
-            for frame_idx in frame_indices:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                ret, frame = cap.read()
-                if ret:
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frames.append(frame_rgb)
-            
-            cap.release()
-            
-            if not frames:
-                raise ValueError(f"No frames extracted from: {video_path}")
-            
-            video_array = np.array(frames)
-            logging.info(f"Loaded video {Path(video_path).name} with shape: {video_array.shape}")
-            return video_array
-            
-        except Exception as e:
-            logging.error(f"Failed to load video {Path(video_path).name}: {e}")
-            raise
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video file: {video_path}")
+        
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames == 0:
+            raise ValueError(f"Video has no frames: {video_path}")
+        
+        # Calculate frame indices
+        if num_frames >= total_frames:
+            frame_indices = list(range(total_frames))
+        else:
+            frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+        
+        frames = []
+        for frame_idx in frame_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if ret:
+                frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        
+        cap.release()
+        
+        if not frames:
+            raise ValueError(f"No frames extracted from: {video_path}")
+        
+        return np.array(frames)
 
 
 class PromptProcessor:
@@ -199,18 +180,12 @@ class VLLMInference:
         generation_config = self.config['generation']
         processing_config = self.config['processing']
         
-        logging.info(f"Loading model: {model_config['name']}")
-        
         # Set engine version based on config
         vllm_version = hardware_config.get('vllm_engine', 'v0')
-        if vllm_version.lower() == 'v1':
-            os.environ['VLLM_USE_V1'] = '1'
-            logging.info("Using VLLM V1 engine")
-        else:
-            os.environ['VLLM_USE_V1'] = '0'
-            logging.info("Using VLLM V0 engine")
+        os.environ['VLLM_USE_V1'] = '1' if vllm_version.lower() == 'v1' else '0'
+        logging.info(f"Model loading: {model_config['name']} (VLLM {vllm_version.upper()})")
         
-        # Build VLLM parameters based on version
+        # Build VLLM parameters
         llm_params = {
             "model": model_config['name'],
             "trust_remote_code": model_config['trust_remote_code'],
@@ -222,33 +197,23 @@ class VLLMInference:
             "mm_processor_kwargs": {"fps": processing_config.get('fps', 2.0)},
         }
         
-        # Add V1-specific optimizations
+        # Add V1 optimizations
         if vllm_version.lower() == 'v1':
-            # V1 optimizations
-            max_batched_tokens = processing_config.get('max_num_batched_tokens', 16384)
-            llm_params["max_num_batched_tokens"] = max_batched_tokens
-            logging.info(f"V1 optimization: max_num_batched_tokens={max_batched_tokens}")
+            llm_params["max_num_batched_tokens"] = processing_config.get('max_num_batched_tokens', 16384)
         
         self.llm = LLM(**llm_params)
-        
         self.sampling_params = SamplingParams(
             temperature=generation_config['temperature'],
             max_tokens=generation_config['max_tokens'],
             top_p=generation_config['top_p']
         )
-        
-        logging.info("Model loaded successfully")
     
     def get_effective_batch_size(self, media_type: str) -> int:
         """Get effective batch size based on media type"""
-        config_batch_size = self.config['processing'].get('batch_size', 1)
-        return max(1, config_batch_size // 2) if media_type == "video" else config_batch_size
+        return self.config['processing'].get('batch_size', 1)
     
     def generate_caption(self, media_path: str, media_type: str = "video") -> str:
         """Generate caption for a single media file with multi-round support"""
-        if not self.llm or not self.sampling_params:
-            raise RuntimeError("Model not initialized")
-        
         conversation_config = self.config.get('conversation', {})
         enable_multi_round = conversation_config.get('enable_multi_round', False)
         rounds = self.prompt_processor.get_available_rounds(media_type) if enable_multi_round else 1
@@ -262,10 +227,8 @@ class VLLMInference:
             if hasattr(self.llm, 'clear_cache'):
                 self.llm.clear_cache()
             
-            logging.info(f"Round {round_num}/{rounds} for {Path(media_path).name}")
             caption = self._execute_single_round(media_data, round_num, media_path, media_type)
             
-            logging.info(f"Round {round_num} completed for {Path(media_path).name} ({len(caption)} chars)")
             print(f"\n🎯 ROUND {round_num} CAPTION - {Path(media_path).name} 🎯")
             print(caption)
             print("="*50)
@@ -275,9 +238,6 @@ class VLLMInference:
     
     def generate_batch_captions(self, media_paths: List[str], media_type: str = "image") -> List[str]:
         """Generate captions for multiple media files with multi-round support"""
-        if not self.llm or not self.sampling_params:
-            raise RuntimeError("Model not initialized")
-        
         if not media_paths:
             return []
         
@@ -291,13 +251,8 @@ class VLLMInference:
         
         # Execute conversation rounds
         for round_num in range(1, rounds + 1):
-            logging.info(f"Starting batch round {round_num}/{rounds} for {len(media_paths)} {media_type} files")
-            for i, media_path in enumerate(media_paths):
-                logging.info(f"  - File {i+1}/{len(media_paths)}: {Path(media_path).name}")
-            
             captions = self._execute_batch_round(media_data_list, round_num, media_paths, media_type)
             
-            logging.info(f"Batch round {round_num} completed")
             for i, caption in enumerate(captions):
                 print(f"\n🎯 BATCH ROUND {round_num} - FILE {i+1}/{len(media_paths)} 🎯")
                 print(f"File: {Path(media_paths[i]).name}")
@@ -374,14 +329,12 @@ class VLLMInference:
             batch_inputs.append(query_inputs)
         
         # Generate batch responses
-        logging.info(f"Generating batch captions for round {round_num} ({len(batch_inputs)} files)")
         outputs = self.llm.generate(batch_inputs, sampling_params=self.sampling_params)
         
         captions = []
         for i, (output, media_path) in enumerate(zip(outputs, media_paths)):
             if output and len(output.outputs) > 0:
                 caption = output.outputs[0].text.strip()
-                logging.info(f"Generated caption for {Path(media_path).name} ({len(caption)} chars)")
                 
                 # Update conversation history
                 _, user_prompt = processed_prompts[i]
@@ -439,27 +392,18 @@ class VLLMInference:
     
     def _generate_with_llm(self, query_inputs: Dict[str, Any], media_path: str) -> str:
         """Generate caption using VLLM"""
-        try:
-            logging.info(f"Generating caption for {Path(media_path).name}")
-            outputs = self.llm.generate(query_inputs, sampling_params=self.sampling_params)
-            
-            if outputs and len(outputs) > 0:
-                caption = outputs[0].outputs[0].text.strip()
-                logging.info(f"Generated caption for {Path(media_path).name}: {len(caption)} chars")
-                return caption
-            else:
-                raise RuntimeError("No output generated")
-                
-        except Exception as e:
-            logging.error(f"Failed to generate caption for {Path(media_path).name}: {e}")
-            raise
+        outputs = self.llm.generate(query_inputs, sampling_params=self.sampling_params)
+        
+        if outputs and len(outputs) > 0:
+            return outputs[0].outputs[0].text.strip()
+        else:
+            raise RuntimeError("No output generated")
     
     def cleanup(self):
         """Clean up resources"""
         if hasattr(self, 'llm') and self.llm:
             del self.llm
         self.conversation_manager.clear()
-        logging.info("Model cleanup completed")
 
 
 def create_inference_engine(config: Dict[str, Any]) -> VLLMInference:
