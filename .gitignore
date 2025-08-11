@@ -1,0 +1,5 @@
+captions/
+images/
+videos/
+__pycache__/
+*.py[cod]

@@ -1,0 +1,119 @@
+# =============================================================================
+# VLLM Qwen2.5-Omni Prompts Configuration
+# =============================================================================
+
+[general]
+trigger_word = "banostasis concept"  # Optional trigger word for captions
+
+# =============================================================================
+# VIDEO PROMPTS
+# =============================================================================
+[video]
+[video.round1]
+system_prompt = "You are a highly attentive assistant that describes Kinestasis stop motion videos with extreme frame-by-frame precision."
+user_prompt = '''Describe the video in extreme detail, with special attention to the characteristics of Kinestasis stop motion animation. Follow these guidelines:
+
+1. **Main Content:**
+    * What is the primary focus of the scene?
+    * Who are the main characters visible? (Do not use generic terms like 'individuals', 'characters', or 'persons'. Always specify gender or clear descriptors.)
+
+2. **Object and Character Details:**
+    * Describe appearance with high specificity (clothing, textures, posture, facial expression).
+    * Mention notable objects, their position, and any changes between frames.
+
+3. **Stop Motion Movement Specifics:**
+    * Describe ALL movements, even the smallest changes between frames.
+    * Note that movements are discontinuous or staccato, typical of stop motion.
+    * Specify direction, speed, and incremental changes in position or pose.
+    * Describe any unnatural jumps or abrupt changes between frames.
+    * Indicate if the camera captures motion blur or if each frame is sharply defined.
+
+4. **Background Elements:**
+    * Describe the setting and environment in detail.
+    * Mention any environmental changes, lighting shifts, or set adjustments between frames.
+
+5. **Visual Style:**
+    * Describe lighting, color palette, textures, and materials.
+    * Note any signs of handcrafted elements (visible seams, rough edges, miniature props).
+    * State the overall style (e.g., handcrafted, collage-like, photographic stop motion).
+
+6. **Camera Work:**
+    * Describe EVERY camera angle change.
+    * Note the distance from subjects (close-up, medium, wide shot).
+    * Mention any camera movements (pan, tilt, zoom) and whether they occur in stop motion increments.
+
+7. **Scene Transitions:**
+    * Describe exactly how each shot transitions to the next — cuts, fades, or animated transitions.
+    * Note changes in perspective or framing.
+
+Be extremely precise. Assume you are describing the video frame-by-frame, noticing even the smallest differences in character position, object placement, or camera angle.
+'''
+
+[video.round2]
+system_prompt = "You are an expert video caption refiner. Your task is to improve video captions based on specific instructions."
+user_prompt = '''
+    **Summarize the generated caption in 500 tokens, but with the following modifications:**
+        * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
+        * Start your caption with the {trigger_word}
+        * Do not mention your task
+        * Don't use references to video such as "the video begins" or "the video features" etc., but keep those sentences meaningful
+        * Mention the clothing details of the characters
+        * Use only declarative sentences
+        * Don't mention the style of the video
+        * Don't mention the name of the characters
+'''
+
+# =============================================================================
+# IMAGE PROMPTS
+# =============================================================================
+[image]
+[image.round1]
+system_prompt = "You are an expert art and photography analyst with deep knowledge of visual composition, artistic techniques, and cultural contexts."
+user_prompt = '''Analyze this image with comprehensive detail, focusing on both artistic and photographic elements:
+
+1. **Subject and Content:**
+    * What is the main subject or focal point of the image?
+    * Who or what is depicted? (Be specific about people, objects, scenes)
+    * What is happening in the image? Describe any action or narrative.
+
+2. **Artistic Style and Technique:**
+    * What artistic style or movement does this represent? (e.g., Renaissance, Impressionism, Modern, Contemporary)
+    * What medium appears to be used? (oil painting, watercolor, photography, digital art, etc.)
+    * Describe the brushwork, texture, or photographic technique visible.
+
+3. **Composition and Visual Elements:**
+    * How is the composition arranged? (rule of thirds, symmetry, leading lines)
+    * What is the perspective and viewpoint?
+    * Describe the use of space, balance, and visual hierarchy.
+
+4. **Color and Lighting:**
+    * What is the color palette? (warm/cool, monochromatic, complementary)
+    * How is light used? (natural/artificial, soft/harsh, directional)
+    * What mood does the lighting create?
+
+5. **Details and Symbolism:**
+    * What specific details stand out? (clothing, objects, facial expressions)
+    * Are there symbolic elements or cultural references?
+    * What emotions or themes are conveyed?
+
+6. **Technical Quality:**
+    * What is the level of detail and craftsmanship?
+    * How is depth and dimension achieved?
+    * Comment on the overall execution and skill level.
+
+Be thorough and precise in your analysis, treating this as a professional art critique or detailed photographic analysis.
+'''
+
+[image.round2]
+system_prompt = "You are an expert caption writer specializing in art and photography descriptions."
+user_prompt = '''
+    **Create a refined caption in 400 tokens with these specifications:**
+        * Write as one flowing paragraph without line breaks
+        * Start with the {trigger_word} if specified
+        * Focus on the most significant visual and artistic elements
+        * Use descriptive but accessible language
+        * Include key details about style, composition, and subject matter
+        * Avoid mentioning this is an analysis or description task
+        * Use declarative sentences only
+        * Create a caption suitable for art catalogs or museum displays
+'''

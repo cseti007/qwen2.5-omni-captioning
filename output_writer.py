@@ -23,6 +23,11 @@ def save_caption(caption: str, video_path: str, config: Dict[str, Any]) -> str:
     Returns:
         Path to saved caption file (first format if multiple)
     """
+    # Add trigger word to caption if configured
+    trigger_word = config.get('prompts', {}).get('trigger_word', '')
+    if trigger_word:
+        caption = f"{trigger_word}. {caption}"
+    
     video_file = Path(video_path)
     paths_config = config['paths']
     

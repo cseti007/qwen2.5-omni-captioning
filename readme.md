@@ -1,244 +1,241 @@
-# VLLM Qwen2.5-Omni Video Captioning - Complete Installation Guide
+# VLLM Qwen2.5-Omni Captioning
 
-## 📋 Prerequisites
+This is a node based captioning tool using the multimodal Qwen2.5-Omni 7B model.
 
-- **NVIDIA GPU** with CUDA support (8GB+ VRAM recommended for AWQ model)
-- **CUDA 11.8+** or **CUDA 12.x**
-- **Python 3.8+**
-- **Conda** or **Miniconda** installed
-- **Git** installed
+- [VLLM Qwen2.5-Omni Captioning](#vllm-qwen25-omni-captioning)
+  - [Features](#features)
+    - [Multimodal support](#multimodal-support)
+    - [Advanced features](#advanced-features)
+  - [Installation \& Setup](#installation--setup)
+    - [Prerequisites](#prerequisites)
+      - [Python 3.11 Installation](#python-311-installation)
+      - [Clone this repo](#clone-this-repo)
+    - [Virtual Environment Setup](#virtual-environment-setup)
+      - [1. Create Virtual Environment](#1-create-virtual-environment)
+      - [2. Activate Virtual Environment](#2-activate-virtual-environment)
+    - [Dependencies Installation](#dependencies-installation)
+    - [GPU Setup Verification](#gpu-setup-verification)
+      - [Check CUDA availability](#check-cuda-availability)
+  - [Quick Start](#quick-start)
+    - [Basic Usage](#basic-usage)
+  - [Configuration](#configuration)
+    - [System Configuration (`config.toml`)](#system-configuration-configtoml)
+    - [Prompts Configuration (`prompts.toml`)](#prompts-configuration-promptstoml)
+  - [Performance Optimization](#performance-optimization)
+    - [Batch Processing](#batch-processing)
+    - [GPU Settings](#gpu-settings)
+    - [Processing Modes](#processing-modes)
+  - [Advanced Usage](#advanced-usage)
+    - [Multi-Round Conversation](#multi-round-conversation)
+    - [Custom Prompts](#custom-prompts)
+    - [Output Formats](#output-formats)
+      - [TXT Format](#txt-format)
+      - [CSV Format](#csv-format)
+      - [JSON Format](#json-format)
+  - [Acknowledgments](#acknowledgments)
 
-## 🚀 Step-by-Step Installation
+## Features
+### Multimodal support
+- Video captioning
+- Image captioning
 
-### Step 1: Create Conda Environment
+### Advanced features
+- Batch processing: process multiple files simultaneously
+- VLLM backend
+- Multi-round conversation: kifejteni bővebben
+- Multiple output formats: can provide TXT, CSV, JSON output simultaneously
 
+## Installation & Setup
+
+### Prerequisites
+
+#### Python 3.11 Installation
+
+**Ubuntu/Debian:**
 ```bash
-# Create new conda environment (Python 3.9-3.12 supported)
-conda create -n video-ds-qwen python=3.11
-conda activate video-ds-qwen
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3.11-dev
 ```
 
-### Step 2: Install CUDA Toolkit (if needed)
-
+**CentOS/RHEL/Fedora:**
 ```bash
-# Check if CUDA is available
-nvcc --version
+# Fedora
+sudo dnf install python3.11 python3.11-venv
 
-# If CUDA not available, install via conda
-conda install -c nvidia cuda-toolkit=12.1
+# CentOS/RHEL (requires EPEL)
+sudo yum install epel-release
+sudo yum install python311 python311-venv
 ```
 
-### Step 3: Install PyTorch with CUDA
-
+**macOS:**
 ```bash
-# Install PyTorch with CUDA support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Using Homebrew
+brew install python@3.11
 
-# Verify GPU access
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}')"
+# Using pyenv
+pyenv install 3.11.0
+pyenv global 3.11.0
 ```
 
-### Step 4: Install Base Dependencies
+**Windows:**
+- Download Python 3.11 from [python.org](https://www.python.org/downloads/)
+- During installation, check "Add Python to PATH"
+- Verify with: `python --version`
+
+#### Clone this repo
 
 ```bash
-# Install basic requirements
-pip install transformers>=4.52.3
-pip install accelerate
-pip install toml
-pip install setuptools_scm
+git clone <repository-url>
+cd <repository-name>
 ```
 
-### Step 5: Install VLLM (Choose Option A or B)
+### Virtual Environment Setup
 
-#### Option A: Standard VLLM (Simpler, Text Output Only)
+#### 1. Create Virtual Environment
+```bash
+# Navigate to project directory
+cd <repository-name>
+
+# Create virtual environment
+python3.11 -m venv venv
+```
+
+#### 2. Activate Virtual Environment
+
+**Linux/macOS:**
+```bash
+source venv/bin/activate
+```
+
+**Windows:**
+```bash
+# Command Prompt
+venv\Scripts\activate
+
+# PowerShell
+venv\Scripts\Activate.ps1
+```
+
+You should see `(venv)` in your terminal prompt when activated.
+
+### Dependencies Installation
 
 ```bash
-pip install vllm>=0.8.5.post1
-pip install qwen-omni-utils[decord]
+pip install -r requirements.txt
 ```
 
-#### Option B: Full Qwen2.5-Omni Support (Recommended)
+### GPU Setup Verification
 
+#### Check CUDA availability
 ```bash
-# Clone VLLM fork
-git clone -b qwen2_omni_public https://github.com/fyabc/vllm.git
-cd vllm
-git checkout de8f43fbe9428b14d31ac5ec45d065cd3e5c3ee0
-
-# Install additional dependencies
-pip install torchdiffeq resampy x_transformers qwen-omni-utils[decord]
-
-# Install VLLM requirements
-pip install -r requirements/cuda.txt
-pip install --upgrade setuptools wheel
-
-# Install VLLM
-pip install .
-
-# Go back to project directory
-cd ..
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'CUDA version: {torch.version.cuda}')"
+python -c "import torch; print(f'GPU count: {torch.cuda.device_count()}')"
 ```
+## Quick Start
 
-### Step 6: Download Project Files
-
+### Basic Usage
 ```bash
-# Create project directory
-mkdir video-captioning
-cd video-captioning
+# Process images
+python main.py
 
-# Create required directories
-mkdir videos captions models
+# Process videos  
+python main.py --config config_video.toml
 
-# Download/create project files (config.toml, main.py, etc.)
-# Copy the files from our previous artifacts
+# Custom configuration
+python main.py --config my_custom_config.toml
 ```
 
-### Step 7: Configure the System
+## Configuration
 
-```bash
-# Set environment variable for VLLM V0 engine
-export VLLM_USE_V1=0
-
-# Add to ~/.bashrc for permanent setting
-echo 'export VLLM_USE_V1=0' >> ~/.bashrc
-```
-
-### Step 8: Download Model (Optional - Auto-downloads on first run)
-
-```bash
-# Pre-download model to avoid first-run delay
-python -c "
-from transformers import AutoTokenizer, AutoProcessor
-model_name = 'Qwen/Qwen2.5-Omni-7B-AWQ'
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-processor = AutoProcessor.from_pretrained(model_name)
-print('Model downloaded successfully!')
-"
-```
-
-## 🔧 Configuration
-
-### Edit config.toml
-
+### System Configuration (`config.toml`)
 ```toml
 [model]
 name = "Qwen/Qwen2.5-Omni-7B-AWQ"
-model_path = "./models/Qwen2.5-Omni-7B-AWQ"
 trust_remote_code = true
 dtype = "auto"
-max_model_len = 8192
+max_model_len = 24576
 
 [hardware]
 gpu_memory_utilization = 0.9
 tensor_parallel_size = 1
 
-[generation]
-temperature = 0.7
-max_tokens = 512
-top_p = 0.9
-
 [paths]
-input_dir = "./videos"              # Change to your video folder
-output_dir = "./captions"           # Change to your output folder
-video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
+input_dir = "./images"
+output_dir = "./captions"
+output_formats = ["txt", "csv", "json"]
 
 [processing]
-batch_size = 1
-use_audio_in_video = true
+mode = "image"  # "video" | "image"
+batch_size = 4
+batch_mode = true
+overwrite_existing = true
 
-[prompts]
-system_prompt = "You are a helpful assistant that describes videos in detail."
-user_prompt = "Please describe this video in detail, including what you see and hear."
+[conversation]
+enable_multi_round = true
+rounds = 2
+
+[files]
+prompts_config = "prompts.toml"
 ```
 
-## 🧪 Test Installation
+### Prompts Configuration (`prompts.toml`)
+Separate configuration file for prompts allows easy customization:
+- **Video prompts**: Specialized for stop-motion and video analysis
+- **Image prompts**: Optimized for art and photography analysis
+- **Multiple prompt sets**: Alternative configurations
 
-### Quick Test
+## Performance Optimization
 
-```bash
-# Test VLLM installation
-python -c "
-import vllm
-from vllm import LLM
-print('VLLM imported successfully!')
-"
+### Batch Processing
+- **Automatic scaling**: Videos use smaller batches due to memory requirements
+- **Smart fallback**: Falls back to single processing if batch fails
+- **Memory aware**: Adjusts batch size based on GPU memory
 
-# Test Qwen utilities
-python -c "
-import qwen_omni_utils
-print('Qwen utilities imported successfully!')
-"
+### GPU Settings
+```toml
+[hardware]
+gpu_memory_utilization = 0.9  # Adjust based on your GPU
+tensor_parallel_size = 1       # Increase for multi-GPU setups
 ```
 
-### Full Test with Sample Video
-
-```bash
-# Place a test video in ./videos/ folder
-# Run the captioning system
-python main.py
+### Processing Modes
+```toml
+[processing]
+batch_size = 4
+batch_mode = true     # Enable for performance boost
 ```
 
-## 🐛 Troubleshooting
+## Advanced Usage
 
-### Common Issues
+### Multi-Round Conversation
+The system supports multi-round caption refinement:
+1. **Round 1**: Detailed analysis of visual content
+2. **Round 2**: Refined, polished caption suitable for catalogs
 
-**CUDA Out of Memory:**
-```bash
-# Reduce GPU memory utilization in config.toml
-gpu_memory_utilization = 0.7  # or lower
-```
+### Custom Prompts
+Create custom prompt configurations for different use cases:
+- Art analysis prompts
+- Technical documentation
+- Social media captions
+- Academic descriptions
 
-**Import Errors:**
-```bash
-# Reinstall with clean environment
-conda deactivate
-conda env remove -n video-captioning
-# Start over from Step 1
-```
+### Output Formats
 
-**VLLM V1 Engine Issues:**
-```bash
-# Ensure V0 engine is used
-export VLLM_USE_V1=0
-```
+#### TXT Format
+Plain text captions for simple use cases.
 
-**Transformers Version Conflicts:**
-```bash
-# Force install specific version
-pip install transformers==4.52.3 --force-reinstall
-```
+#### CSV Format  
+Consolidated dataset with filename and caption columns.
 
-## 📊 System Requirements
+#### JSON Format
+Rich metadata including:
+- Processing timestamp
+- Model configuration
+- Technical details
+- Original file paths
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| GPU Memory | 6GB | 12GB+ |
-| System RAM | 16GB | 32GB+ |
-| Disk Space | 20GB | 50GB+ |
-| CUDA | 11.8+ | 12.1+ |
+## Acknowledgments
 
-## 🎯 Final Directory Structure
-
-```
-video-captioning/
-├── config.toml
-├── main.py
-├── video_loader.py
-├── vllm_inference.py
-├── output_writer.py
-├── videos/                 # Put your videos here
-├── captions/               # Generated captions appear here
-└── models/                 # Model cache
-```
-
-## ✅ Ready to Run!
-
-```bash
-# Activate environment
-conda activate video-captioning
-
-# Run the video captioning system
-python main.py
-```
-
-The system will automatically process all videos in the `videos` folder and save captions to the `captions` folder.
+- **Qwen Team**: For the excellent Qwen2.5-Omni model
+- **VLLM Team**: For the high-performance inference engine
