@@ -1,46 +1,209 @@
 """
 VLLM Inference Module for Qwen2.5-Omni Video/Image Captioning
-Handles model loading and video/image caption generation using official Qwen2.5-Omni pattern
+Refactored version with conversation history support
 """
 
 import os
 import logging
-from typing import Dict, Any, Optional, NamedTuple, List
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 import numpy as np
 import cv2
 from PIL import Image
 from vllm import LLM, SamplingParams
+from output_writer import save_conversation_round, save_conversation_final
 
 
-class QueryResult(NamedTuple):
-    """Data structure for Qwen2.5-Omni queries"""
-    inputs: dict
-    limit_mm_per_prompt: dict[str, int]
+class ConversationManager:
+    """Manages conversation history for multi-round conversations"""
+    
+    def __init__(self):
+        self.histories: Dict[str, List[Dict[str, Any]]] = {}
+    
+    def get_history(self, media_path: str) -> List[Dict[str, Any]]:
+        """Get conversation history for a media file"""
+        if media_path not in self.histories:
+            self.histories[media_path] = []
+        return self.histories[media_path].copy()
+    
+    def add_message(self, media_path: str, role: str, content: str):
+        """Add a message to conversation history"""
+        if media_path not in self.histories:
+            self.histories[media_path] = []
+        self.histories[media_path].append({"role": role, "content": content})
+    
+    def get_previous_caption(self, media_path: str) -> str:
+        """Get the last assistant message from conversation history"""
+        history = self.get_history(media_path)
+        for msg in reversed(history):
+            if msg["role"] == "assistant":
+                return msg["content"]
+        return ""
+    
+    def clear(self):
+        """Clear all conversation histories"""
+        self.histories.clear()
+
+
+class ChatMLBuilder:
+    """Builds ChatML prompts from conversation history"""
+    
+    @staticmethod
+    def build_prompt(conversation: List[Dict[str, Any]], prompt_mode: str, media_type: str) -> str:
+        """Build ChatML prompt string from conversation history"""
+        prompt_parts = []
+        
+        for message in conversation:
+            role = message["role"]
+            content = message["content"]
+            
+            if role == "system":
+                prompt_parts.append(f"<|im_start|>system\n{content}<|im_end|>")
+            elif role == "user":
+                if prompt_mode == "text":
+                    prompt_parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+                else:
+                    # Add media tokens for multimodal mode
+                    media_token = "<|vision_bos|><|VIDEO|><|vision_eos|>" if media_type == "video" else "<|vision_bos|><|IMAGE|><|vision_eos|>"
+                    prompt_parts.append(f"<|im_start|>user\n{media_token}{content}<|im_end|>")
+            elif role == "assistant":
+                prompt_parts.append(f"<|im_start|>assistant\n{content}<|im_end|>")
+        
+        # Add generation prompt
+        prompt_parts.append("<|im_start|>assistant\n")
+        return "\n".join(prompt_parts)
+
+
+class MediaLoader:
+    """Handles loading and preprocessing of media files"""
+    
+    @staticmethod
+    def load_image(image_path: str) -> np.ndarray:
+        """Load image file as numpy array"""
+        try:
+            image = Image.open(image_path).convert('RGB')
+            image_array = np.array(image)
+            logging.info(f"Loaded image {Path(image_path).name} with shape: {image_array.shape}")
+            return image_array
+        except Exception as e:
+            logging.error(f"Failed to load image {Path(image_path).name}: {e}")
+            raise
+    
+    @staticmethod
+    def load_video(video_path: str, num_frames: int = 16) -> np.ndarray:
+        """Load video file as numpy array"""
+        try:
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                raise ValueError(f"Cannot open video file: {video_path}")
+            
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if total_frames == 0:
+                raise ValueError(f"Video has no frames: {video_path}")
+            
+            # Calculate frame indices
+            if num_frames >= total_frames:
+                frame_indices = list(range(total_frames))
+            else:
+                frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+            
+            frames = []
+            for frame_idx in frame_indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if ret:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frames.append(frame_rgb)
+            
+            cap.release()
+            
+            if not frames:
+                raise ValueError(f"No frames extracted from: {video_path}")
+            
+            video_array = np.array(frames)
+            logging.info(f"Loaded video {Path(video_path).name} with shape: {video_array.shape}")
+            return video_array
+            
+        except Exception as e:
+            logging.error(f"Failed to load video {Path(video_path).name}: {e}")
+            raise
+
+
+class PromptProcessor:
+    """Processes and prepares prompts for different rounds"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+    
+    def get_round_prompts(self, round_num: int, media_type: str) -> Dict[str, str]:
+        """Get prompts for a specific round and media type"""
+        round_key = f"round{round_num}"
+        prompts_config = self.config['prompts']
+        
+        # Check media-specific prompts first, fallback to generic
+        if media_type in prompts_config and round_key in prompts_config[media_type]:
+            round_prompts = prompts_config[media_type][round_key]
+        elif round_key in prompts_config:
+            round_prompts = prompts_config[round_key]
+        else:
+            raise ValueError(f"No prompts configured for {media_type}.{round_key}")
+        
+        return round_prompts
+    
+    def process_prompts(self, system_prompt: str, user_prompt: str, previous_caption: str = "") -> tuple[str, str]:
+        """Process prompts with trigger words and previous caption"""
+        # Apply trigger word
+        trigger_word = self.config['prompts'].get('general', {}).get('trigger_word', '')
+        if trigger_word:
+            system_prompt = system_prompt.replace('{trigger_word}', trigger_word)
+            user_prompt = user_prompt.replace('{trigger_word}', trigger_word)
+        
+        # Apply previous caption if available
+        if previous_caption and "{previous_caption}" in user_prompt:
+            user_prompt = user_prompt.format(previous_caption=previous_caption)
+        
+        return system_prompt, user_prompt
+    
+    def get_available_rounds(self, media_type: str) -> int:
+        """Auto-detect available rounds from prompts configuration"""
+        prompts_config = self.config['prompts']
+        i = 1
+        while f"round{i}" in prompts_config.get(media_type, {}):
+            i += 1
+        return i - 1
 
 
 class VLLMInference:
-    """VLLM inference handler for Qwen2.5-Omni"""
+    """Main VLLM inference handler for Qwen2.5-Omni"""
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.llm: Optional[LLM] = None
         self.sampling_params: Optional[SamplingParams] = None
+        
+        # Initialize components
+        self.conversation_manager = ConversationManager()
+        self.prompt_processor = PromptProcessor(config)
+        self.media_loader = MediaLoader()
+        self.chatml_builder = ChatMLBuilder()
+        
         self._initialize_model()
     
     def _initialize_model(self):
-        """Initialize VLLM model using official Qwen2.5-Omni pattern"""
+        """Initialize VLLM model"""
+        logging.getLogger("vllm").setLevel(logging.WARNING)
+        logging.getLogger("transformers").setLevel(logging.WARNING)
+        
         model_config = self.config['model']
         hardware_config = self.config['hardware']
         generation_config = self.config['generation']
-        processing_config = self.config['processing'] 
+        processing_config = self.config['processing']
         
         logging.info(f"Loading model: {model_config['name']}")
         
-        # Set environment variable for V0 engine (required for Omni)
+        # Set V0 engine for Omni
         os.environ['VLLM_USE_V1'] = '0'
         
-        # Initialize LLM directly (following official pattern)
         self.llm = LLM(
             model=model_config['name'],
             trust_remote_code=model_config['trust_remote_code'],
@@ -49,12 +212,9 @@ class VLLMInference:
             gpu_memory_utilization=hardware_config['gpu_memory_utilization'],
             tensor_parallel_size=hardware_config['tensor_parallel_size'],
             limit_mm_per_prompt={"video": 1, "audio": 1, "image": 1},
-            mm_processor_kwargs={
-                "fps": processing_config.get('fps', 2.0),
-    },
+            mm_processor_kwargs={"fps": processing_config.get('fps', 2.0)},
         )
         
-        # Initialize sampling parameters
         self.sampling_params = SamplingParams(
             temperature=generation_config['temperature'],
             max_tokens=generation_config['max_tokens'],
@@ -66,60 +226,60 @@ class VLLMInference:
     def get_effective_batch_size(self, media_type: str) -> int:
         """Get effective batch size based on media type"""
         config_batch_size = self.config['processing'].get('batch_size', 1)
+        return max(1, config_batch_size // 2) if media_type == "video" else config_batch_size
+    
+    def generate_caption(self, media_path: str, media_type: str = "video") -> str:
+        """Generate caption for a single media file with multi-round support"""
+        if not self.llm or not self.sampling_params:
+            raise RuntimeError("Model not initialized")
         
-        if media_type == "video":
-            # Videos are larger, use smaller batch
-            return max(1, config_batch_size // 2)
-        else:  # image
-            return config_batch_size
+        conversation_config = self.config.get('conversation', {})
+        enable_multi_round = conversation_config.get('enable_multi_round', False)
+        rounds = self.prompt_processor.get_available_rounds(media_type) if enable_multi_round else 1
+        
+        # Load media data
+        media_data = self._load_media_data(media_path, media_type)
+        caption = ""
+        
+        # Execute conversation rounds
+        for round_num in range(1, rounds + 1):
+            if hasattr(self.llm, 'clear_cache'):
+                self.llm.clear_cache()
+            
+            logging.info(f"Round {round_num}/{rounds} for {Path(media_path).name}")
+            caption = self._execute_single_round(media_data, round_num, media_path, media_type)
+            
+            logging.info(f"Round {round_num} completed for {Path(media_path).name} ({len(caption)} chars)")
+            print(f"\n🎯 ROUND {round_num} CAPTION - {Path(media_path).name} 🎯")
+            print(caption)
+            print("="*50)
+        
+        save_conversation_final(caption, media_path, self.config)
+        return caption
     
     def generate_batch_captions(self, media_paths: List[str], media_type: str = "image") -> List[str]:
-        """
-        Generate captions for multiple media files simultaneously
-        
-        Args:
-            media_paths: List of paths to media files
-            media_type: Type of media ("video" or "image")
-            
-        Returns:
-            List of generated captions (one per media file)
-        """
+        """Generate captions for multiple media files with multi-round support"""
         if not self.llm or not self.sampling_params:
             raise RuntimeError("Model not initialized")
         
         if not media_paths:
             return []
-            
+        
         conversation_config = self.config.get('conversation', {})
         enable_multi_round = conversation_config.get('enable_multi_round', False)
-        rounds = conversation_config.get('rounds', 1)
+        rounds = self.prompt_processor.get_available_rounds(media_type) if enable_multi_round else 1
         
-        if not enable_multi_round:
-            rounds = 1
-        
-        # Load all media files
-        media_data_list = []
-        for media_path in media_paths:
-            if media_type == "video":
-                media_data = self._load_video_as_numpy(media_path)
-            elif media_type == "image":
-                media_data = self._load_image_as_numpy(media_path)
-            else:
-                raise ValueError(f"Unsupported media type: {media_type}")
-            media_data_list.append(media_data)
-        
+        # Load all media data
+        media_data_list = [self._load_media_data(path, media_type) for path in media_paths]
         captions = [""] * len(media_paths)
         
-        # Execute conversation rounds for all media
+        # Execute conversation rounds
         for round_num in range(1, rounds + 1):
             logging.info(f"Starting batch round {round_num}/{rounds} for {len(media_paths)} {media_type} files")
+            for i, media_path in enumerate(media_paths):
+                logging.info(f"  - File {i+1}/{len(media_paths)}: {Path(media_path).name}")
             
-            if round_num == 1:
-                # First round: Initial descriptions
-                captions = self._execute_batch_round(media_data_list, round_num, media_paths, media_type)
-            else:
-                # Subsequent rounds: Refine previous captions
-                captions = self._execute_batch_round(media_data_list, round_num, media_paths, media_type, captions)
+            captions = self._execute_batch_round(media_data_list, round_num, media_paths, media_type)
             
             logging.info(f"Batch round {round_num} completed")
             for i, caption in enumerate(captions):
@@ -127,371 +287,165 @@ class VLLMInference:
                 print(f"File: {Path(media_paths[i]).name}")
                 print(caption)
                 print("="*80)
-
+        
+        # Save final results
+        if rounds > 1:
+            for caption, media_path in zip(captions, media_paths):
+                save_conversation_final(caption, media_path, self.config)
+        
         return captions
-
-    def _execute_batch_round(self, media_data_list: List[np.ndarray], round_num: int, 
-                           media_paths: List[str], media_type: str, 
-                           previous_captions: List[str] = None) -> List[str]:
-        """
-        Execute a single conversation round for batch of media
-        
-        Args:
-            media_data_list: List of media data as numpy arrays
-            round_num: Current round number (1-based)
-            media_paths: List of media file paths
-            media_type: Type of media ("video" or "image")
-            previous_captions: Previous captions for refinement (None for first round)
-            
-        Returns:
-            Generated captions for this round
-        """
-        processing_config = self.config['processing']
-        use_audio_in_video = processing_config.get('use_audio_in_video', False) and media_type == "video"
-        
-        # Get prompts for this round and media type
-        round_key = f"round{round_num}"
-        prompts_config = self.config['prompts']
-        
-        # Check if media-specific prompts exist, fallback to generic if not
-        if media_type in prompts_config and round_key in prompts_config[media_type]:
-            round_prompts = prompts_config[media_type][round_key]
-        elif round_key in prompts_config:
-            # Fallback to generic prompts (backward compatibility)
-            round_prompts = prompts_config[round_key]
-        else:
-            raise ValueError(f"No prompts configured for {media_type}.{round_key}")
-        
-        system_prompt = round_prompts['system_prompt']
-        user_prompt = round_prompts['user_prompt']
-        
-        # Apply trigger_word to prompts if it exists
-        trigger_word = prompts_config.get('general', {}).get('trigger_word', '')
-        if trigger_word:
-            system_prompt = system_prompt.replace('{trigger_word}', trigger_word)
-            user_prompt = user_prompt.replace('{trigger_word}', trigger_word)
-        
-        # Create batch queries
-        batch_inputs = []
-        for i, media_data in enumerate(media_data_list):
-            # For rounds > 1, inject previous caption into user prompt
-            current_user_prompt = user_prompt
-            if round_num > 1 and previous_captions and i < len(previous_captions):
-                current_user_prompt = user_prompt.format(previous_caption=previous_captions[i])
-            
-            # Create query for this media
-            query_result = self._create_media_query(
-                question=current_user_prompt,
-                system_prompt=system_prompt,
-                media_data=media_data,
-                media_type=media_type,
-                use_audio_in_video=use_audio_in_video
-            )
-            batch_inputs.append(query_result.inputs)
-        
-        # Generate batch response
-        try:
-            outputs = self.llm.generate(
-                batch_inputs, 
-                sampling_params=self.sampling_params
-            )
-            
-            captions = []
-            for output in outputs:
-                if output and len(output.outputs) > 0:
-                    caption = output.outputs[0].text.strip()
-                    captions.append(caption)
-                else:
-                    captions.append("")  # Empty caption for failed generation
-                    
-            return captions
-                    
-        except Exception as e:
-            logging.error(f"Failed to generate batch captions for round {round_num}: {e}")
-            raise
-
-    def generate_caption(self, media_path: str, media_type: str = "video") -> str:
-            """
-            Generate caption for a video or image file with multi-round conversation support
-            
-            Args:
-                media_path: Path to media file (video or image)
-                media_type: Type of media ("video" or "image")
-                
-            Returns:
-                Generated caption text (final result after all rounds)
-            """
-            if not self.llm or not self.sampling_params:
-                raise RuntimeError("Model not initialized")
-            
-            conversation_config = self.config.get('conversation', {})
-            enable_multi_round = conversation_config.get('enable_multi_round', False)
-            rounds = conversation_config.get('rounds', 1)
-            
-            if not enable_multi_round:
-                rounds = 1
-            
-            # Load media once for all rounds
-            if media_type == "video":
-                media_data = self._load_video_as_numpy(media_path)
-            elif media_type == "image":
-                media_data = self._load_image_as_numpy(media_path)
-            else:
-                raise ValueError(f"Unsupported media type: {media_type}")
-                
-            caption = ""
-            
-            # Execute conversation rounds
-            for round_num in range(1, rounds + 1):
-                if round_num == 1:
-                    logging.info(f"Starting round {round_num}/{rounds} — loading {media_type} from: {media_path}")
-                    # First round: Initial description
-                    caption = self._execute_round(media_data, round_num, media_path, media_type)
-                else:
-                    logging.info(f"Starting round {round_num}/{rounds} — refining previous caption, no {media_type} reload")
-                    # Subsequent rounds: Refine previous caption
-                    caption = self._execute_round(media_data, round_num, media_path, media_type, caption)
-                
-                logging.info(f"Round {round_num} completed ({len(caption)} chars)")
-                logging.info(f"Caption after round {round_num}:\n{caption}")
-
-            return caption
-
-    def _execute_round(self, media_data: np.ndarray, round_num: int, media_path: str, media_type: str, previous_caption: str = "") -> str:
-            """
-            Execute a single conversation round
-            
-            Args:
-                media_data: Media data as numpy array (video frames or single image)
-                round_num: Current round number (1-based)
-                media_path: Path to media file
-                media_type: Type of media ("video" or "image")
-                previous_caption: Caption from previous round (empty for first round)
-                
-            Returns:
-                Generated caption for this round
-            """
-            processing_config = self.config['processing']
-            use_audio_in_video = processing_config.get('use_audio_in_video', False) and media_type == "video"
-            
-            # Get prompts for this round and media type
-            round_key = f"round{round_num}"
-            prompts_config = self.config['prompts']
-            
-            # Check if media-specific prompts exist, fallback to generic if not
-            if media_type in prompts_config and round_key in prompts_config[media_type]:
-                round_prompts = prompts_config[media_type][round_key]
-            elif round_key in prompts_config:
-                # Fallback to generic prompts (backward compatibility)
-                round_prompts = prompts_config[round_key]
-            else:
-                raise ValueError(f"No prompts configured for {media_type}.{round_key}")
-            
-            system_prompt = round_prompts['system_prompt']
-            user_prompt = round_prompts['user_prompt']
-            
-            # Apply trigger_word to prompts if it exists
-            trigger_word = prompts_config.get('general', {}).get('trigger_word', '')
-            if trigger_word:
-                system_prompt = system_prompt.replace('{trigger_word}', trigger_word)
-                user_prompt = user_prompt.replace('{trigger_word}', trigger_word)
-            
-            # For rounds > 1, inject previous caption into user prompt
-            if round_num > 1 and previous_caption:
-                user_prompt = user_prompt.format(previous_caption=previous_caption)
-            
-            # Create query for this round
-            query_result = self._create_media_query(
-                question=user_prompt,
-                system_prompt=system_prompt,
-                media_data=media_data,
-                media_type=media_type,
-                use_audio_in_video=use_audio_in_video
-            )
-            
-            # Generate response
-            try:
-                outputs = self.llm.generate(
-                    query_result.inputs, 
-                    sampling_params=self.sampling_params
-                )
-                
-                if outputs and len(outputs) > 0:
-                    caption = outputs[0].outputs[0].text.strip()
-                    return caption
-                else:
-                    raise RuntimeError(f"No output generated for round {round_num}")
-                    
-            except Exception as e:
-                logging.error(f"Failed to generate caption for round {round_num}: {e}")
-                raise
     
-    def _load_image_as_numpy(self, image_path: str) -> np.ndarray:
-        """
-        Load image file as numpy array (following official pattern)
-        
-        Args:
-            image_path: Path to image file
-            
-        Returns:
-            Image as numpy array with shape (height, width, channels)
-        """
-        try:
-            # Load image using PIL
-            image = Image.open(image_path)
-            
-            # Convert to RGB if needed
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Convert to numpy array
-            image_array = np.array(image)
-            
-            logging.info(f"Loaded image with shape: {image_array.shape}")
-            
-            return image_array
-            
-        except Exception as e:
-            logging.error(f"Failed to load image: {e}")
-            raise
-         
-    def _load_video_as_numpy(self, video_path: str, num_frames: int = 16) -> np.ndarray:
-        """
-        Load video file as numpy array (following official pattern)
-        
-        Args:
-            video_path: Path to video file
-            num_frames: Number of frames to extract
-            
-        Returns:
-            Video frames as numpy array with shape (num_frames, height, width, channels)
-        """
-        try:
-            cap = cv2.VideoCapture(video_path)
-            if not cap.isOpened():
-                raise ValueError(f"Cannot open video file: {video_path}")
-            
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            if total_frames == 0:
-                raise ValueError(f"Video has no frames: {video_path}")
-            
-            # Calculate frame indices to sample
-            if num_frames >= total_frames:
-                frame_indices = list(range(total_frames))
-            else:
-                frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
-            
-            frames = []
-            for frame_idx in frame_indices:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                ret, frame = cap.read()
-                if ret:
-                    # Convert BGR to RGB
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frames.append(frame_rgb)
-            
-            cap.release()
-            
-            if not frames:
-                raise ValueError(f"No frames could be extracted from: {video_path}")
-            
-            # Convert to numpy array
-            video_array = np.array(frames)
-            logging.info(f"Loaded video with shape: {video_array.shape}")
-            
-            return video_array
-            
-        except Exception as e:
-            logging.error(f"Failed to load video: {e}")
-            raise
-    
-    def _create_media_query(
-        self, 
-        question: str, 
-        system_prompt: str,
-        media_data: np.ndarray,
-        media_type: str,
-        use_audio_in_video: bool = False
-    ) -> QueryResult:
-        """
-        Create media query using official Qwen2.5-Omni pattern for video or image
-        
-        Args:
-            question: User question/prompt
-            system_prompt: System prompt
-            media_data: Media data as numpy array
-            media_type: Type of media ("video" or "image")
-            use_audio_in_video: Whether to process audio from video (ignored for images)
-            
-        Returns:
-            QueryResult with properly formatted query
-        """
-        # Create prompt using official format
+    def _load_media_data(self, media_path: str, media_type: str) -> np.ndarray:
+        """Load media data based on type"""
         if media_type == "video":
-            media_token = "<|VIDEO|>"
+            return self.media_loader.load_video(media_path)
         elif media_type == "image":
-            media_token = "<|IMAGE|>"
+            return self.media_loader.load_image(media_path)
         else:
             raise ValueError(f"Unsupported media type: {media_type}")
+    
+    def _execute_single_round(self, media_data: np.ndarray, round_num: int, 
+                            media_path: str, media_type: str) -> str:
+        """Execute a single conversation round for one media file"""
+        # Get and process prompts
+        round_prompts = self.prompt_processor.get_round_prompts(round_num, media_type)
+        prompt_mode = round_prompts.get('mode', 'multimodal')
+        previous_caption = self.conversation_manager.get_previous_caption(media_path)
+        system_prompt, user_prompt = self.prompt_processor.process_prompts(
+            round_prompts['system_prompt'], 
+            round_prompts['user_prompt'], 
+            previous_caption
+        )
+        
+        # Build conversation and generate
+        conversation = self._build_conversation(media_path, round_num, system_prompt, user_prompt, prompt_mode)
+        
+        query_inputs = self._create_query_inputs(conversation, prompt_mode, media_type, media_data)
+        caption = self._generate_with_llm(query_inputs, media_path)
+        
+        # Update conversation history
+        self.conversation_manager.add_message(media_path, "user", user_prompt)
+        self.conversation_manager.add_message(media_path, "assistant", caption)
+        
+        # Save conversation round
+        if self.config.get('processing', {}).get('save_conversations', False):
+            save_conversation_round(round_num, system_prompt, user_prompt, caption, media_path, self.config)
+        
+        return caption
+    
+    def _execute_batch_round(self, media_data_list: List[np.ndarray], round_num: int,
+                           media_paths: List[str], media_type: str) -> List[str]:
+        """Execute a single conversation round for batch of media files"""
+        round_prompts = self.prompt_processor.get_round_prompts(round_num, media_type)
+        prompt_mode = round_prompts.get('mode', 'multimodal')
+        
+        # Create batch inputs
+        batch_inputs = []
+        processed_prompts = []
+        
+        for i, media_path in enumerate(media_paths):
+            previous_caption = self.conversation_manager.get_previous_caption(media_path)
+            system_prompt, user_prompt = self.prompt_processor.process_prompts(
+                round_prompts['system_prompt'],
+                round_prompts['user_prompt'],
+                previous_caption
+            )
+            processed_prompts.append((system_prompt, user_prompt))
             
-        prompt = (
-            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n<|vision_bos|>{media_token}<|vision_eos|>"
-            f"{question}<|im_end|>\n"
-            "<|im_start|>assistant\n"
-        )
+            # Build conversation with system prompt fix
+            conversation = self._build_conversation(media_path, round_num, system_prompt, user_prompt, prompt_mode)
+            query_inputs = self._create_query_inputs(conversation, prompt_mode, media_type, media_data_list[i])
+            batch_inputs.append(query_inputs)
         
-        # Prepare multimodal data
-        if media_type == "video":
-            mm_data = {
-                "video": media_data,  # NumPy array for video frames
-            }
-        else:  # image
-            mm_data = {
-                "image": media_data,  # NumPy array for single image
-            }
+        # Generate batch responses
+        logging.info(f"Generating batch captions for round {round_num} ({len(batch_inputs)} files)")
+        outputs = self.llm.generate(batch_inputs, sampling_params=self.sampling_params)
         
-        # Prepare inputs
-        inputs = {
-            "prompt": prompt,
-            "multi_modal_data": mm_data,
-        }
+        captions = []
+        for i, (output, media_path) in enumerate(zip(outputs, media_paths)):
+            if output and len(output.outputs) > 0:
+                caption = output.outputs[0].text.strip()
+                logging.info(f"Generated caption for {Path(media_path).name} ({len(caption)} chars)")
+                
+                # Update conversation history
+                _, user_prompt = processed_prompts[i]
+                self.conversation_manager.add_message(media_path, "user", user_prompt)
+                self.conversation_manager.add_message(media_path, "assistant", caption)
+                
+                # Save conversation round
+                if self.config.get('processing', {}).get('save_conversations', False):
+                    system_prompt, _ = processed_prompts[i]
+                    save_conversation_round(round_num, system_prompt, user_prompt, caption, media_path, self.config)
+                
+                captions.append(caption)
+            else:
+                logging.warning(f"Empty caption generated for {Path(media_path).name}")
+                captions.append("")
         
-        # Add processor kwargs if needed (only for video)
-        if media_type == "video" and use_audio_in_video:
-            inputs["mm_processor_kwargs"] = {
-                "use_audio_in_video": True,
-            }
-            logging.info("Audio processing from video enabled")
+        return captions
+    
+    def _build_conversation(self, media_path: str, round_num: int, 
+                          system_prompt: str, user_prompt: str, prompt_mode: str) -> List[Dict[str, Any]]:
+        """Build conversation history for a round"""
+        # Always start with current round's system prompt
+        conversation = [{"role": "system", "content": system_prompt}]
         
-        # Set limits
-        if media_type == "video":
-            limit_mm_per_prompt = {"video": 1}
-            if use_audio_in_video:
-                limit_mm_per_prompt["audio"] = 1
-        else:  # image
-            limit_mm_per_prompt = {"image": 1}
+        # Add previous assistant responses ONLY in text mode
+        if round_num > 1 and prompt_mode == "text":
+            history = self.conversation_manager.get_history(media_path)
+            for msg in history:
+                # Only add assistant responses (captions from previous rounds)
+                if msg["role"] == "assistant":
+                    conversation.append(msg)
         
-        return QueryResult(
-            inputs=inputs,
-            limit_mm_per_prompt=limit_mm_per_prompt,
-        )
+        # Add current user prompt
+        conversation.append({"role": "user", "content": user_prompt})
+        return conversation
+    
+    def _create_query_inputs(self, conversation: List[Dict[str, Any]], prompt_mode: str,
+                           media_type: str, media_data: np.ndarray) -> Dict[str, Any]:
+        """Create query inputs for VLLM generate API"""
+        prompt = self.chatml_builder.build_prompt(conversation, prompt_mode, media_type)
+        
+        if prompt_mode == "text":
+            return {"prompt": prompt}
+        else:
+            # Multimodal mode
+            mm_data = {"video": media_data} if media_type == "video" else {"image": media_data}
+            query_inputs = {"prompt": prompt, "multi_modal_data": mm_data}
+            
+            # Add audio processing for video if enabled
+            if (media_type == "video" and 
+                self.config['processing'].get('use_audio_in_video', False)):
+                query_inputs["mm_processor_kwargs"] = {"use_audio_in_video": True}
+            
+            return query_inputs
+    
+    def _generate_with_llm(self, query_inputs: Dict[str, Any], media_path: str) -> str:
+        """Generate caption using VLLM"""
+        try:
+            logging.info(f"Generating caption for {Path(media_path).name}")
+            outputs = self.llm.generate(query_inputs, sampling_params=self.sampling_params)
+            
+            if outputs and len(outputs) > 0:
+                caption = outputs[0].outputs[0].text.strip()
+                logging.info(f"Generated caption for {Path(media_path).name}: {len(caption)} chars")
+                return caption
+            else:
+                raise RuntimeError("No output generated")
+                
+        except Exception as e:
+            logging.error(f"Failed to generate caption for {Path(media_path).name}: {e}")
+            raise
     
     def cleanup(self):
         """Clean up resources"""
         if hasattr(self, 'llm') and self.llm:
             del self.llm
+        self.conversation_manager.clear()
         logging.info("Model cleanup completed")
 
 
 def create_inference_engine(config: Dict[str, Any]) -> VLLMInference:
-    """
-    Factory function to create VLLM inference engine
-    
-    Args:
-        config: Configuration dictionary
-        
-    Returns:
-        VLLMInference instance
-    """
+    """Factory function to create VLLM inference engine"""
     return VLLMInference(config)

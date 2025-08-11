@@ -252,10 +252,9 @@ def main():
         # Log conversation settings
         conversation_config = config.get('conversation', {})
         enable_multi_round = conversation_config.get('enable_multi_round', False)
-        rounds = conversation_config.get('rounds', 1)
         
         if enable_multi_round:
-            logging.info(f"Multi-round conversation: ENABLED ({rounds} rounds)")
+            logging.info("Multi-round conversation: ENABLED (rounds auto-detected from prompts)")
         else:
             logging.info("Multi-round conversation: DISABLED (single round)")
 

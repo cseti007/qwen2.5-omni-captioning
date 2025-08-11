@@ -3,58 +3,60 @@
 # =============================================================================
 
 [general]
-trigger_word = "banostasis concept"  # Optional trigger word for captions
+trigger_word = "test concept"  # Optional trigger word for captions
 
 # =============================================================================
 # VIDEO PROMPTS
 # =============================================================================
 [video]
 [video.round1]
+mode = "multimodal"  # "multimodal" | "text"
 system_prompt = "You are a highly attentive assistant that describes Kinestasis stop motion videos with extreme frame-by-frame precision."
-user_prompt = '''Describe the video in extreme detail, with special attention to the characteristics of Kinestasis stop motion animation. Follow these guidelines:
+user_prompt = '''
+Describe the video in extreme detail, with special attention to the characteristics of Kinestasis stop motion animation. Follow these guidelines:
 
 1. **Main Content:**
     * What is the primary focus of the scene?
-    * Who are the main characters visible? (Do not use generic terms like 'individuals', 'characters', or 'persons'. Always specify gender or clear descriptors.)
+    * Who are the main characters visible?
 
 2. **Object and Character Details:**
-    * Describe appearance with high specificity (clothing, textures, posture, facial expression).
-    * Mention notable objects, their position, and any changes between frames.
+    * Don't refer to characters as 'individual', 'characters' and 'persons', instead always use their gender or refer to them with their gender.
+    * Describe the appearance in detail
+    * What notable objects are present?
 
-3. **Stop Motion Movement Specifics:**
-    * Describe ALL movements, even the smallest changes between frames.
-    * Note that movements are discontinuous or staccato, typical of stop motion.
-    * Specify direction, speed, and incremental changes in position or pose.
-    * Describe any unnatural jumps or abrupt changes between frames.
-    * Indicate if the camera captures motion blur or if each frame is sharply defined.
+3. **Actions and Movement:**
+    * Describe ALL movements, no matter how subtle.
+    * Specify the exact type of movement (walking, running, etc.).
+    * Note the direction and speed of movements.
 
 4. **Background Elements:**
-    * Describe the setting and environment in detail.
-    * Mention any environmental changes, lighting shifts, or set adjustments between frames.
+    * Describe the setting and environment.
+    * Note any environmental changes.
 
 5. **Visual Style:**
-    * Describe lighting, color palette, textures, and materials.
-    * Note any signs of handcrafted elements (visible seams, rough edges, miniature props).
-    * State the overall style (e.g., handcrafted, collage-like, photographic stop motion).
+    * Describe the lighting and color palette.
+    * Note any special effects or visual treatments.
+    * What is the overall style of the video? (e.g., realistic, animated, artistic, documentary)
 
 6. **Camera Work:**
     * Describe EVERY camera angle change.
     * Note the distance from subjects (close-up, medium, wide shot).
-    * Mention any camera movements (pan, tilt, zoom) and whether they occur in stop motion increments.
+    * Describe any camera movements (pan, tilt, zoom).
 
 7. **Scene Transitions:**
-    * Describe exactly how each shot transitions to the next — cuts, fades, or animated transitions.
-    * Note changes in perspective or framing.
+    * How does each shot transition to the next?
+    * Note any changes in perspective or viewing angle.
 
-Be extremely precise. Assume you are describing the video frame-by-frame, noticing even the smallest differences in character position, object placement, or camera angle.
+Please be extremely specific and detailed in your description. If you notice any movement or changes, describe them explicitly.
 '''
 
 [video.round2]
+mode = "text"  # "multimodal" | "text"
 system_prompt = "You are an expert video caption refiner. Your task is to improve video captions based on specific instructions."
 user_prompt = '''
     **Summarize the generated caption in 500 tokens, but with the following modifications:**
         * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
-        * Start your caption with the {trigger_word}
+        * Start your answer with the {trigger_word}
         * Do not mention your task
         * Don't use references to video such as "the video begins" or "the video features" etc., but keep those sentences meaningful
         * Mention the clothing details of the characters
@@ -68,6 +70,7 @@ user_prompt = '''
 # =============================================================================
 [image]
 [image.round1]
+mode = "multimodal"  # "multimodal" | "text"
 system_prompt = "You are an expert art and photography analyst with deep knowledge of visual composition, artistic techniques, and cultural contexts."
 user_prompt = '''Analyze this image with comprehensive detail, focusing on both artistic and photographic elements:
 
@@ -105,6 +108,7 @@ Be thorough and precise in your analysis, treating this as a professional art cr
 '''
 
 [image.round2]
+mode = "text"  # "multimodal" | "text"
 system_prompt = "You are an expert caption writer specializing in art and photography descriptions."
 user_prompt = '''
     **Create a refined caption in 400 tokens with these specifications:**

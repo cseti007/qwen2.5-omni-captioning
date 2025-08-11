@@ -1,6 +1,6 @@
 """
-Output Writer Module for VLLM Qwen2.5-Omni Video Captioning
-Handles saving captions to various formats
+Output Writer Module for VLLM Qwen2.5-Omni Video/Image Captioning
+Handles saving captions to various formats and conversation logging
 """
 
 import json
@@ -9,6 +9,95 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
+
+
+def save_conversation_round(round_num: int, system_prompt: str, user_prompt: str, 
+                          response: str, media_path: str, config: Dict[str, Any]) -> None:
+    """
+    Save conversation round to conversation log file
+    
+    Args:
+        round_num: Current round number
+        system_prompt: System prompt used
+        user_prompt: User prompt used
+        response: Assistant response
+        media_path: Path to media file
+        config: Configuration dictionary
+    """
+    if not config.get('processing', {}).get('save_conversations', False):
+        return
+        
+    media_file = Path(media_path)
+    paths_config = config['paths']
+    
+    # Create output directory
+    output_dir = Path(paths_config['output_dir'])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create conversations directory
+    conversations_dir = output_dir / "conversations"
+    conversations_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Conversation log file path
+    log_filename = f"{media_file.stem}.conversation.txt"
+    log_path = conversations_dir / log_filename
+    
+    # Check if this is the first round (create new file) or append
+    if round_num == 1:
+        # Create new conversation log
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write("=" * 60 + "\n")
+            f.write(f"CONVERSATION LOG: {media_file.name}\n")
+            f.write("=" * 60 + "\n")
+            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Model: {config['model']['name']}\n")
+            f.write(f"Processing Mode: {config['processing']['mode']}\n")
+            f.write(f"Multi-round: {'enabled' if config.get('conversation', {}).get('enable_multi_round', False) else 'disabled'}\n\n")
+    
+    # Append round information
+    with open(log_path, 'a', encoding='utf-8') as f:
+        f.write("=" * 60 + "\n")
+        f.write(f"ROUND {round_num}\n")
+        f.write("=" * 60 + "\n\n")
+        
+        f.write("SYSTEM PROMPT:\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"{system_prompt}\n\n")
+        
+        f.write("USER PROMPT:\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"{user_prompt}\n\n")
+        
+        f.write("ASSISTANT RESPONSE:\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"{response}\n\n")
+
+
+def save_conversation_final(final_caption: str, media_path: str, config: Dict[str, Any]) -> None:
+    """
+    Save final caption to conversation log file
+    
+    Args:
+        final_caption: Final processed caption
+        media_path: Path to media file  
+        config: Configuration dictionary
+    """
+    if not config.get('processing', {}).get('save_conversations', False):
+        return
+        
+    media_file = Path(media_path)
+    paths_config = config['paths']
+    
+    conversations_dir = Path(paths_config['output_dir']) / "conversations"
+    log_filename = f"{media_file.stem}.conversation.txt"
+    log_path = conversations_dir / log_filename
+    
+    # Append final result
+    with open(log_path, 'a', encoding='utf-8') as f:
+        f.write("=" * 60 + "\n")
+        f.write("FINAL RESULT\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"{final_caption}\n")
 
 
 def save_caption(caption: str, video_path: str, config: Dict[str, Any]) -> str:
@@ -24,7 +113,7 @@ def save_caption(caption: str, video_path: str, config: Dict[str, Any]) -> str:
         Path to saved caption file (first format if multiple)
     """
     # Add trigger word to caption if configured
-    trigger_word = config.get('prompts', {}).get('trigger_word', '')
+    trigger_word = config.get('prompts', {}).get('general', {}).get('trigger_word', '')
     if trigger_word:
         caption = f"{trigger_word}. {caption}"
     

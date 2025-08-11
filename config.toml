@@ -7,30 +7,32 @@ name = "Qwen/Qwen2.5-Omni-7B-AWQ"
 model_path = "./models/Qwen2.5-Omni-7B-AWQ"
 trust_remote_code = true
 dtype = "auto"
-max_model_len = 24576
+max_model_len = 32768
 
 [hardware]
-gpu_memory_utilization = 0.9
+gpu_memory_utilization = 0.95
 tensor_parallel_size = 1
 
 [generation]
 temperature = 0.0
 max_tokens = 1024
-top_p = 1.0
+top_p = 0.85
 
 [paths]
-input_dir = "./images"
-output_dir = "./captions"
+input_dir = "./videos"
+output_dir = "./captions/videos"
 output_formats = ["txt", "csv", "json"]
 # output_format = "csv"  - save in one format only
 
 [processing]
-mode = "image"  # "video" | "image" | "mixed"
+mode = "video"  # "video" | "image" | "mixed"
 use_audio_in_video = false
 overwrite_existing = true # overwrite caption files if already exist
 fps = 16.0
 batch_size = 4  # Number of media files to process simultaneously
 batch_mode = true  # Enable batch processing for better performance
+save_conversations = true  # Save detailed conversation logs for each file
+
 
 # Extensions based on mode
 video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
@@ -38,7 +40,6 @@ image_extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
 
 [conversation]
 enable_multi_round = true
-rounds = 2
 
 [files]
 prompts_config = "prompts.toml"  # Path to prompts configuration file
