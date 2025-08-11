@@ -3,7 +3,7 @@
 # =============================================================================
 
 [general]
-trigger_word = "test concept"  # Optional trigger word for captions
+trigger_word = "MyTr1gg3r"  # Optional trigger word for captions
 
 # =============================================================================
 # VIDEO PROMPTS
@@ -11,9 +11,9 @@ trigger_word = "test concept"  # Optional trigger word for captions
 [video]
 [video.round1]
 mode = "multimodal"  # "multimodal" | "text"
-system_prompt = "You are a highly attentive assistant that describes Kinestasis stop motion videos with extreme frame-by-frame precision."
+system_prompt = "You are a highly attentive assistant that describes videos with extreme frame-by-frame precision."
 user_prompt = '''
-Describe the video in extreme detail, with special attention to the characteristics of Kinestasis stop motion animation. Follow these guidelines:
+Describe the video in extreme detail, with these guidelines:
 
 1. **Main Content:**
     * What is the primary focus of the scene?
@@ -56,7 +56,7 @@ system_prompt = "You are an expert video caption refiner. Your task is to improv
 user_prompt = '''
     **Summarize the generated caption in 500 tokens, but with the following modifications:**
         * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
-        * Start your answer with the {trigger_word}
+        * Call the main character: {trigger_word}
         * Do not mention your task
         * Don't use references to video such as "the video begins" or "the video features" etc., but keep those sentences meaningful
         * Mention the clothing details of the characters
@@ -72,7 +72,7 @@ user_prompt = '''
 [image.round1]
 mode = "multimodal"  # "multimodal" | "text"
 system_prompt = "You are an expert art and photography analyst with deep knowledge of visual composition, artistic techniques, and cultural contexts."
-user_prompt = '''Analyze this image with comprehensive detail, focusing on both artistic and photographic elements:
+user_prompt = '''Analyze this image with comprehensive detail:
 
 1. **Subject and Content:**
     * What is the main subject or focal point of the image?
@@ -111,13 +111,12 @@ Be thorough and precise in your analysis, treating this as a professional art cr
 mode = "text"  # "multimodal" | "text"
 system_prompt = "You are an expert caption writer specializing in art and photography descriptions."
 user_prompt = '''
-    **Create a refined caption in 400 tokens with these specifications:**
-        * Write as one flowing paragraph without line breaks
-        * Start with the {trigger_word} if specified
-        * Focus on the most significant visual and artistic elements
-        * Use descriptive but accessible language
-        * Include key details about style, composition, and subject matter
-        * Avoid mentioning this is an analysis or description task
-        * Use declarative sentences only
-        * Create a caption suitable for art catalogs or museum displays
+    **Summarize the generated caption in 500 tokens, but with the following modifications:**
+        * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
+        * Call the main character: {trigger_word}
+        * Do not mention your task
+        * Mention the clothing details of the characters
+        * Use only declarative sentences
+        * Don't mention the style of the image
+        * Don't mention the name of the characters
 '''

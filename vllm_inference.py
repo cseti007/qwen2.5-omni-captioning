@@ -201,19 +201,35 @@ class VLLMInference:
         
         logging.info(f"Loading model: {model_config['name']}")
         
-        # Set V0 engine for Omni
-        os.environ['VLLM_USE_V1'] = '0'
+        # Set engine version based on config
+        vllm_version = hardware_config.get('vllm_engine', 'v0')
+        if vllm_version.lower() == 'v1':
+            os.environ['VLLM_USE_V1'] = '1'
+            logging.info("Using VLLM V1 engine")
+        else:
+            os.environ['VLLM_USE_V1'] = '0'
+            logging.info("Using VLLM V0 engine")
         
-        self.llm = LLM(
-            model=model_config['name'],
-            trust_remote_code=model_config['trust_remote_code'],
-            dtype=model_config['dtype'],
-            max_model_len=model_config['max_model_len'],
-            gpu_memory_utilization=hardware_config['gpu_memory_utilization'],
-            tensor_parallel_size=hardware_config['tensor_parallel_size'],
-            limit_mm_per_prompt={"video": 1, "audio": 1, "image": 1},
-            mm_processor_kwargs={"fps": processing_config.get('fps', 2.0)},
-        )
+        # Build VLLM parameters based on version
+        llm_params = {
+            "model": model_config['name'],
+            "trust_remote_code": model_config['trust_remote_code'],
+            "dtype": model_config['dtype'],
+            "max_model_len": model_config['max_model_len'],
+            "gpu_memory_utilization": hardware_config['gpu_memory_utilization'],
+            "tensor_parallel_size": hardware_config['tensor_parallel_size'],
+            "limit_mm_per_prompt": {"video": 1, "audio": 1, "image": 1},
+            "mm_processor_kwargs": {"fps": processing_config.get('fps', 2.0)},
+        }
+        
+        # Add V1-specific optimizations
+        if vllm_version.lower() == 'v1':
+            # V1 optimizations
+            max_batched_tokens = processing_config.get('max_num_batched_tokens', 16384)
+            llm_params["max_num_batched_tokens"] = max_batched_tokens
+            logging.info(f"V1 optimization: max_num_batched_tokens={max_batched_tokens}")
+        
+        self.llm = LLM(**llm_params)
         
         self.sampling_params = SamplingParams(
             temperature=generation_config['temperature'],
