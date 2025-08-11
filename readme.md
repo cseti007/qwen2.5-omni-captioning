@@ -14,8 +14,6 @@ This is a node based captioning tool using the multimodal Qwen2.5-Omni 7B model.
       - [1. Create Virtual Environment](#1-create-virtual-environment)
       - [2. Activate Virtual Environment](#2-activate-virtual-environment)
     - [Dependencies Installation](#dependencies-installation)
-    - [GPU Setup Verification](#gpu-setup-verification)
-      - [Check CUDA availability](#check-cuda-availability)
   - [Quick Start](#quick-start)
     - [Basic Usage](#basic-usage)
   - [Configuration](#configuration)
@@ -42,8 +40,8 @@ This is a node based captioning tool using the multimodal Qwen2.5-Omni 7B model.
 ### Advanced features
 - Batch processing: process multiple files simultaneously
 - VLLM backend
-- Multi-round conversation: kifejteni bővebben
-- Multiple output formats: can provide TXT, CSV, JSON output simultaneously
+- Multi-round conversation: The system processes media through multiple sequential rounds (configurable), where each round refines and improves the caption based on the previous round's output.
+- Multiple output formats: can create TXT, CSV, JSON output simultaneously
 
 ## Installation & Setup
 
@@ -86,7 +84,6 @@ pyenv global 3.11.0
 
 ```bash
 git clone <repository-url>
-cd <repository-name>
 ```
 
 ### Virtual Environment Setup
@@ -124,14 +121,6 @@ You should see `(venv)` in your terminal prompt when activated.
 pip install -r requirements.txt
 ```
 
-### GPU Setup Verification
-
-#### Check CUDA availability
-```bash
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
-python -c "import torch; print(f'CUDA version: {torch.version.cuda}')"
-python -c "import torch; print(f'GPU count: {torch.cuda.device_count()}')"
-```
 ## Quick Start
 
 ### Basic Usage
