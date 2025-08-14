@@ -69,6 +69,35 @@ class ChatMLBuilder:
         return "\n".join(prompt_parts)
 
 
+def detect_media_type(file_path: str) -> str:
+    """Auto-detect media type from file extension"""
+    extension = Path(file_path).suffix.lower()
+    
+    video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    
+    if extension in video_extensions:
+        return "video"
+    elif extension in image_extensions:
+        return "image"
+    else:
+        raise ValueError(f"Unsupported file type: {extension}")
+
+
+def list_all_supported_files(directory: str) -> List[Path]:
+    """Find all supported media files in directory"""
+    video_exts = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
+    image_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    all_exts = video_exts | image_exts
+    
+    files = []
+    for file_path in Path(directory).iterdir():
+        if file_path.is_file() and file_path.suffix.lower() in all_exts:
+            files.append(file_path)
+    
+    return sorted(files)
+
+
 class MediaLoader:
     """Handles loading and preprocessing of media files"""
     
@@ -116,20 +145,15 @@ class PromptProcessor:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
     
-    def get_round_prompts(self, round_num: int, media_type: str) -> Dict[str, str]:
-        """Get prompts for a specific round and media type"""
+    def get_round_prompts(self, round_num: int) -> Dict[str, str]:
+        """Get prompts for a specific round (media type auto-detected)"""
         round_key = f"round{round_num}"
         prompts_config = self.config['prompts']
         
-        # Check media-specific prompts first, fallback to generic
-        if media_type in prompts_config and round_key in prompts_config[media_type]:
-            round_prompts = prompts_config[media_type][round_key]
-        elif round_key in prompts_config:
-            round_prompts = prompts_config[round_key]
+        if round_key in prompts_config:
+            return prompts_config[round_key]
         else:
-            raise ValueError(f"No prompts configured for {media_type}.{round_key}")
-        
-        return round_prompts
+            raise ValueError(f"No prompts configured for {round_key}")
     
     def process_prompts(self, system_prompt: str, user_prompt: str, previous_caption: str = "") -> tuple[str, str]:
         """Process prompts with trigger words and previous caption"""
@@ -145,11 +169,11 @@ class PromptProcessor:
         
         return system_prompt, user_prompt
     
-    def get_available_rounds(self, media_type: str) -> int:
+    def get_available_rounds(self) -> int:
         """Auto-detect available rounds from prompts configuration"""
         prompts_config = self.config['prompts']
         i = 1
-        while f"round{i}" in prompts_config.get(media_type, {}):
+        while f"round{i}" in prompts_config:
             i += 1
         return i - 1
 
@@ -195,6 +219,7 @@ class VLLMInference:
             "tensor_parallel_size": hardware_config['tensor_parallel_size'],
             "limit_mm_per_prompt": {"video": 1, "audio": 1, "image": 1},
             "mm_processor_kwargs": {"fps": processing_config.get('fps', 2.0)},
+            "disable_log_stats": False,          # Stats logging
         }
         
         # Add V1 optimizations
@@ -205,7 +230,7 @@ class VLLMInference:
         self.sampling_params = SamplingParams(
             temperature=generation_config['temperature'],
             max_tokens=generation_config['max_tokens'],
-            top_p=generation_config['top_p']
+            top_p=generation_config['top_p'],
         )
     
     def get_effective_batch_size(self, media_type: str) -> int:
@@ -216,7 +241,7 @@ class VLLMInference:
         """Generate caption for a single media file with multi-round support"""
         conversation_config = self.config.get('conversation', {})
         enable_multi_round = conversation_config.get('enable_multi_round', False)
-        rounds = self.prompt_processor.get_available_rounds(media_type) if enable_multi_round else 1
+        rounds = self.prompt_processor.get_available_rounds() if enable_multi_round else 1
         
         # Load media data
         media_data = self._load_media_data(media_path, media_type)
@@ -243,7 +268,7 @@ class VLLMInference:
         
         conversation_config = self.config.get('conversation', {})
         enable_multi_round = conversation_config.get('enable_multi_round', False)
-        rounds = self.prompt_processor.get_available_rounds(media_type) if enable_multi_round else 1
+        rounds = self.prompt_processor.get_available_rounds() if enable_multi_round else 1
         
         # Load all media data
         media_data_list = [self._load_media_data(path, media_type) for path in media_paths]
@@ -279,7 +304,7 @@ class VLLMInference:
                             media_path: str, media_type: str) -> str:
         """Execute a single conversation round for one media file"""
         # Get and process prompts
-        round_prompts = self.prompt_processor.get_round_prompts(round_num, media_type)
+        round_prompts = self.prompt_processor.get_round_prompts(round_num)
         prompt_mode = round_prompts.get('mode', 'multimodal')
         previous_caption = self.conversation_manager.get_previous_caption(media_path)
         system_prompt, user_prompt = self.prompt_processor.process_prompts(
@@ -307,7 +332,7 @@ class VLLMInference:
     def _execute_batch_round(self, media_data_list: List[np.ndarray], round_num: int,
                            media_paths: List[str], media_type: str) -> List[str]:
         """Execute a single conversation round for batch of media files"""
-        round_prompts = self.prompt_processor.get_round_prompts(round_num, media_type)
+        round_prompts = self.prompt_processor.get_round_prompts(round_num)
         prompt_mode = round_prompts.get('mode', 'multimodal')
         
         # Create batch inputs

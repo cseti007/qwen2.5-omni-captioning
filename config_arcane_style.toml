@@ -21,8 +21,8 @@ max_tokens = 512
 top_p = 0.85
 
 [paths]
-input_dir = "./videos"
-output_dir = "./captions/videos"
+input_dir = "/home/cseti/data2/AI/datasets/video/Arcane/Cut_Original/best_of/env and ppl/16x1450x816/evaluation"
+output_dir = "/home/cseti/data2/AI/datasets/video/Arcane/Cut_Original/best_of/env and ppl/16x1450x816/evalutaion/qomni_captions"
 output_formats = ["txt", "csv", "json"]
 # output_format = "csv"  - save in one format only
 
@@ -44,4 +44,4 @@ image_extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
 enable_multi_round = true
 
 [files]
-prompts_config = "./example_prompts/prompts.toml"  # Path to prompts configuration file
+prompts_config = "example_prompts/prompts_video_style_2round.toml"  # Path to prompts configuration file

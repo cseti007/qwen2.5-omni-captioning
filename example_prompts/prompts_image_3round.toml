@@ -3,13 +3,9 @@
 # =============================================================================
 
 [general]
-trigger_word = "test concept"  # Optional trigger word for captions
+trigger_word = "t3st_1mag3"  # Optional trigger word for captions
 
-# =============================================================================
-# VIDEO PROMPTS
-# =============================================================================
-[image]
-[image.round1]
+[round1]
 mode = "multimodal"  # "multimodal" | "text"
 system_prompt = "You are a helpful assistant that describes images in detail."
 user_prompt = '''Describe the image in details focusing on the following main topics:
@@ -17,7 +13,7 @@ user_prompt = '''Describe the image in details focusing on the following main to
     * Describe the setting and environment in detail.
 '''
 
-[image.round2]
+[round2]
 mode = "multimodal"  # "multimodal" | "text"
 system_prompt = "Describe the image in details focusing on the following main topics:"
 user_prompt = '''
@@ -27,7 +23,7 @@ user_prompt = '''
     * What notable objects are present?
 '''
 
-[image.round3]
+[round3]
 mode = "text"  # "multimodal" | "text"
 system_prompt = "You are an expert image caption refiner. Your task is to improve image captions based on specific instructions."
 user_prompt = '''

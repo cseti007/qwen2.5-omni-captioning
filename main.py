@@ -10,16 +10,16 @@ import argparse
 from pathlib import Path
 from typing import Dict, Any, List
 
-from video_loader import get_video_files, prepare_video_for_vllm
-from image_loader import get_image_files, prepare_image_for_vllm
-from vllm_inference import create_inference_engine
+from video_loader import prepare_video_for_vllm
+from image_loader import prepare_image_for_vllm
+from vllm_inference import create_inference_engine, list_all_supported_files, detect_media_type
 from output_writer import save_caption, check_existing_caption
 
 
 def setup_logging(level: str = "INFO"):
     logging.basicConfig(
         level=getattr(logging, level.upper()),
-        format='🎯 %(asctime)s - %(levelname)s - %(message)s',  # Feltűnőbb format
+        format='🎯 %(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
         ]
@@ -83,23 +83,9 @@ Examples:
 
 
 def process_batch_media(media_files: List[Path], inference_engine, config: Dict[str, Any]) -> tuple[int, int]:
-    """
-    Process media files in batches for better performance
-    
-    Args:
-        media_files: List of media file paths
-        inference_engine: VLLM inference engine
-        config: Configuration dictionary
-    
-    Returns:
-        Tuple of (successful_count, failed_count)
-    """
-    processing_config = config['processing']
-    mode = processing_config.get('mode', 'video')
-    batch_size = processing_config.get('batch_size', 4)
-    
-    # Get effective batch size for media type
-    effective_batch_size = inference_engine.get_effective_batch_size(mode)
+    """Process media files in batches with auto-detection"""
+    batch_size = config['processing'].get('batch_size', 4)
+    effective_batch_size = inference_engine.get_effective_batch_size("mixed")
     
     successful = 0
     failed = 0
@@ -112,52 +98,55 @@ def process_batch_media(media_files: List[Path], inference_engine, config: Dict[
         logging.info(f"Processing batch {i//effective_batch_size + 1} ({len(batch)} files)")
         
         try:
-            # Check which files need processing (skip existing captions)
-            files_to_process = []
+            # Check existing captions and group by media type
+            video_files = []
+            image_files = []
             files_to_skip = []
             
             for media_path in batch_paths:
                 if check_existing_caption(media_path, config):
                     files_to_skip.append(Path(media_path).name)
+                    continue
+                
+                media_type = detect_media_type(media_path)
+                if media_type == "video":
+                    video_files.append(media_path)
                 else:
-                    files_to_process.append(media_path)
+                    image_files.append(media_path)
             
             if files_to_skip:
                 logging.info(f"Skipping {len(files_to_skip)} files with existing captions")
                 successful += len(files_to_skip)
             
-            if not files_to_process:
-                continue
+            # Process video files in batch
+            if video_files:
+                prepared_videos = [prepare_video_for_vllm(path) for path in video_files]
+                video_captions = inference_engine.generate_batch_captions(prepared_videos, "video")
+                
+                for j, caption in enumerate(video_captions):
+                    if caption:
+                        output_path = save_caption(caption, video_files[j], config)
+                        logging.info(f"Batch saved: {Path(video_files[j]).name} -> {Path(output_path).name}")
+                        successful += 1
+                    else:
+                        failed += 1
             
-            # Prepare media files
-            prepared_paths = []
-            for media_path in files_to_process:
-                if mode == 'video':
-                    prepared_path = prepare_video_for_vllm(media_path)
-                elif mode == 'image':
-                    prepared_path = prepare_image_for_vllm(media_path)
-                else:
-                    raise ValueError(f"Unsupported mode: {mode}")
-                prepared_paths.append(prepared_path)
-            
-            # Generate batch captions
-            captions = inference_engine.generate_batch_captions(prepared_paths, mode)
-            
-            # Save captions
-            for j, caption in enumerate(captions):
-                if caption:  # Only save non-empty captions
-                    original_path = files_to_process[j]
-                    output_path = save_caption(caption, original_path, config)
-                    logging.info(f"Batch saved: {Path(original_path).name} -> {Path(output_path).name}")
-                    successful += 1
-                else:
-                    logging.warning(f"Empty caption for: {Path(files_to_process[j]).name}")
-                    failed += 1
+            # Process image files in batch
+            if image_files:
+                prepared_images = [prepare_image_for_vllm(path) for path in image_files]
+                image_captions = inference_engine.generate_batch_captions(prepared_images, "image")
+                
+                for j, caption in enumerate(image_captions):
+                    if caption:
+                        output_path = save_caption(caption, image_files[j], config)
+                        logging.info(f"Batch saved: {Path(image_files[j]).name} -> {Path(output_path).name}")
+                        successful += 1
+                    else:
+                        failed += 1
                     
         except Exception as e:
             logging.error(f"Batch processing failed: {e}")
-            # Fallback to single processing for this batch
-            logging.info("Falling back to single file processing for this batch")
+            # Fallback to single processing
             for media_file in batch:
                 try:
                     if process_single_media(str(media_file), inference_engine, config):
@@ -171,17 +160,7 @@ def process_batch_media(media_files: List[Path], inference_engine, config: Dict[
 
 
 def process_single_media(media_path: str, inference_engine, config: Dict[str, Any]) -> bool:
-    """
-    Process a single media file (video or image)
-    
-    Args:
-        media_path: Path to media file
-        inference_engine: VLLM inference engine
-        config: Configuration dictionary
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Process a single media file with auto-detection"""
     media_file = Path(media_path)
     
     try:
@@ -190,18 +169,15 @@ def process_single_media(media_path: str, inference_engine, config: Dict[str, An
             logging.info(f"Caption already exists, skipping: {media_file.name}")
             return True
         
-        # Determine media type and prepare accordingly
-        processing_config = config['processing']
-        mode = processing_config.get('mode', 'video')
+        # Auto-detect media type and prepare accordingly
+        media_type = detect_media_type(media_path)
         
-        if mode == 'video':
+        if media_type == 'video':
             prepared_media_path = prepare_video_for_vllm(media_path)
-            media_type = 'video'
-        elif mode == 'image':
+        elif media_type == 'image':
             prepared_media_path = prepare_image_for_vllm(media_path)
-            media_type = 'image'
         else:
-            raise ValueError(f"Unsupported mode: {mode}")
+            raise ValueError(f"Unsupported media type: {media_type}")
         
         # Generate caption
         caption = inference_engine.generate_caption(prepared_media_path, media_type)
@@ -218,12 +194,7 @@ def process_single_media(media_path: str, inference_engine, config: Dict[str, An
         
     except Exception as e:
         logging.error(f"Failed to process {media_file.name}: {e}")
-        
-        if config['processing'].get('skip_errors', True):
-            logging.info("Continuing with next file...")
-            return False
-        else:
-            raise
+        return False
 
 
 def main():
@@ -238,12 +209,7 @@ def main():
         # Setup logging
         setup_logging()
         
-        # Get processing mode
-        processing_config = config['processing']
-        mode = processing_config.get('mode', 'video')
-        
         logging.info("Starting VLLM Qwen2.5-Omni Media Captioning")
-        logging.info(f"Processing mode: {mode.upper()}")
         logging.info(f"Config file: {args.config}")
         logging.info(f"Model: {config['model']['name']}")
         logging.info(f"Input dir: {config['paths']['input_dir']}")
@@ -258,39 +224,30 @@ def main():
         else:
             logging.info("Multi-round conversation: DISABLED (single round)")
 
-        # Get media files based on mode
-        if mode == 'video':
-            media_files = get_video_files(
-                config['paths']['input_dir'],
-                config['processing']['video_extensions']
-            )
-            media_type_name = "video"
-        elif mode == 'image':
-            media_files = get_image_files(
-                config['paths']['input_dir'],
-                config['processing']['image_extensions']
-            )
-            media_type_name = "image"
-        else:
-            raise ValueError(f"Unsupported processing mode: {mode}")
+        # Auto-detect all supported media files
+        media_files = list_all_supported_files(config['paths']['input_dir'])
         
         if not media_files:
-            logging.warning(f"No {media_type_name} files found in input directory")
+            logging.warning("No supported media files found in input directory")
             return
         
-        logging.info(f"Found {len(media_files)} {media_type_name} files")
+        # Count by type for logging
+        video_count = sum(1 for f in media_files if detect_media_type(str(f)) == "video")
+        image_count = len(media_files) - video_count
+        
+        logging.info(f"Found {len(media_files)} media files ({video_count} videos, {image_count} images)")
         
         # Initialize inference engine
         logging.info("Initializing VLLM inference engine...")
         inference_engine = create_inference_engine(config)
         
         # Check if batch processing is enabled
+        processing_config = config['processing']
         batch_mode = processing_config.get('batch_mode', False)
         batch_size = processing_config.get('batch_size', 1)
         
         if batch_mode and len(media_files) > 1 and batch_size > 1:
             logging.info(f"Batch processing enabled (batch_size: {batch_size})")
-            # Process media files in batches
             successful, failed = process_batch_media(media_files, inference_engine, config)
         else:
             if batch_mode:
@@ -303,7 +260,8 @@ def main():
             failed = 0
             
             for i, media_file in enumerate(media_files, 1):
-                logging.info(f"Processing {i}/{len(media_files)}: {media_file.name}")
+                media_type = detect_media_type(str(media_file))
+                logging.info(f"Processing {i}/{len(media_files)}: {media_file.name} ({media_type})")
                 
                 if process_single_media(str(media_file), inference_engine, config):
                     successful += 1
