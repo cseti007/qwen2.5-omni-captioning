@@ -3,3 +3,4 @@ images/
 videos/
 __pycache__/
 *.py[cod]
+gradio_app.log
