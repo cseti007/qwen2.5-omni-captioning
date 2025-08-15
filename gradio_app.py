@@ -256,7 +256,7 @@ def create_interface():
         title="VLLM Caption Generator", 
         css_paths=["static/gallery.css"],
         js="() => { if (!window.location.href.includes('__theme=dark')) { window.location.href += '?__theme=dark'; } }",
-        theme="dark"
+        theme=None
     ) as interface:
         
         gr.Markdown("# 🎯 VLLM Qwen2.5-Omni Caption Generator")
