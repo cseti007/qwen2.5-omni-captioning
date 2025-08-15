@@ -1,11 +1,11 @@
-# VLLM Qwen2.5-Omni Captioning
+# Qwen2.5-Omni Captioning
 
 **Note:** This is a fun project built with vibecoding. I'm not a developer, so I might not be able to help with every technical issue.
 
 This is a node-based image and video captioning tool using Qwen2.5-Omni models with VLLM backend.
 
 ## ToC
-- [VLLM Qwen2.5-Omni Captioning](#vllm-qwen25-omni-captioning)
+- [Qwen2.5-Omni Captioning](#qwen25-omni-captioning)
   - [ToC](#toc)
   - [Features](#features)
   - [Model support](#model-support)
