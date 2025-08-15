@@ -116,7 +116,7 @@ prompts_config = "./example_prompts/prompts.toml"  # Path to prompts configurati
 ### Prompts Config (`example_prompts/prompts.toml`)
 ```toml
 [general]
-trigger_word = "MyTr1gg3r"                  # Optional trigger word for captions
+trigger_word = "MyTr1gg3r"                  # Word added to start of saved captions, use {trigger_word} in prompts to reference it
 
 [round1]
 mode = "multimodal"                         # "multimodal" | "text" - input type
