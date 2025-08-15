@@ -6,21 +6,22 @@
 }
 
 /* Gallery Container */
-.hf-gallery-container {
+.gallery-container {
     width: 100%;
     padding: 10px;
 }
 
-.hf-gallery {
+.gallery {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--gallery-grid-size), 1fr));
     gap: var(--gallery-gap);
     padding: 0;
 }
 
-/* Gallery Items */
-.hf-gallery-item {
-    position: relative;
+/* Gallery Items - Clean Architecture */
+.gallery-item {
+    display: flex;
+    flex-direction: column;
     background: #1a1a1a;
     border-radius: var(--gallery-border-radius);
     overflow: hidden;
@@ -29,34 +30,31 @@
     border: 2px solid transparent;
 }
 
-.hf-gallery-item:hover {
+.gallery-item:hover {
     transform: scale(1.02);
     box-shadow: 0 8px 25px rgba(0,0,0,0.3);
     border-color: #007acc;
 }
 
-/* Media Elements */
-.hf-gallery-item img,
-.hf-gallery-item video {
+/* Media Container */
+.media-container {
+    position: relative;
     width: 100%;
     height: var(--gallery-grid-size);
+    overflow: hidden;
+}
+
+.media-container video,
+.media-container img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+    cursor: pointer;
     display: block;
 }
 
-/* Error State */
-.hf-gallery-item.error {
-    background: #ff4444;
-    color: white;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    min-height: var(--gallery-grid-size);
-}
-
-/* Play Overlay */
-.play-overlay {
+/* Play Overlay - only for videos */
+.video .play-overlay {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -72,35 +70,38 @@
     font-size: 24px;
     opacity: 0.8;
     transition: opacity 0.2s ease;
+    pointer-events: none;
 }
 
-.hf-gallery-item:hover .play-overlay {
-    opacity: 1;
+.video:hover .play-overlay {
+    opacity: 0;
 }
 
-/* Caption Overlay */
+/* Caption - ALWAYS visible below media */
 .caption {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(transparent, rgba(0,0,0,0.9));
-    color: white;
-    padding: 20px 12px 12px;
+    padding: 12px;
     font-size: 12px;
     line-height: 1.3;
-    max-height: 60%;
+    color: white;
+    background: #2a2a2a;
+    max-height: 150px;
     overflow-y: auto;
-    opacity: 0;
-    transition: opacity 0.2s ease;
+    /* No position: absolute - naturally flows below media */
 }
 
-.hf-gallery-item:hover .caption {
-    opacity: 1;
+/* Error State */
+.gallery-item.error {
+    background: #ff4444;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: var(--gallery-grid-size);
 }
 
 /* Empty State */
-.hf-gallery-empty {
+.gallery-empty {
     text-align: center;
     padding: 40px;
     color: #666;

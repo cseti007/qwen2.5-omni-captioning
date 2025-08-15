@@ -29,6 +29,65 @@ processing_state = {
 }
 
 
+def create_status_msg(status, i, total, filename, media_type="", extra=""):
+    """Create standardized status message"""
+    type_info = f"Type: {media_type}\n" if media_type else ""
+    return f"{status} ({i}/{total})\n\n{filename}\n\n{type_info}{extra}"
+
+
+def convert_path_for_web(path):
+    """Convert file path for web serving"""
+    try:
+        return str(path).replace('\\', '/') if Path(path).is_absolute() else str(Path(path).relative_to(Path.cwd())).replace('\\', '/')
+    except ValueError:
+        return str(path).replace('\\', '/')
+
+
+def create_media_item(path, caption):
+    """Create HTML for single media item with clean architecture"""
+    web_path = convert_path_for_web(path)
+    is_video = Path(path).suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
+    
+    # Clean structure - no positioning logic in HTML
+    if is_video:
+        return f'''
+        <div class="gallery-item video">
+            <div class="media-container">
+                <video muted loop preload="auto" 
+                       onmouseover="this.play().catch(e=>console.log('Video play failed:', e))" 
+                       onmouseout="this.pause(); this.currentTime=0;"
+                       onclick="if(this.paused) this.play(); else this.pause();">
+                    <source src="/gradio_api/file={web_path}" type="video/mp4">
+                </video>
+                <div class="play-overlay">▶</div>
+            </div>
+            <div class="caption">{caption}</div>
+        </div>'''
+    else:
+        return f'''
+        <div class="gallery-item image">
+            <div class="media-container">
+                <img src="/gradio_api/file={web_path}" alt="Generated image" loading="lazy" onclick="window.open(this.src, '_blank');">
+            </div>
+            <div class="caption">{caption}</div>
+        </div>'''
+
+
+def create_hf_style_gallery(gallery_results):
+    """Create HuggingFace-style widget gallery with compact HTML generation"""
+    if not gallery_results:
+        return '<div class="gallery-empty">No results yet...</div>'
+    
+    items = []
+    for path, caption in gallery_results:
+        if path == "error":
+            items.append(f'<div class="gallery-item error"><div class="caption">{caption}</div></div>')
+        else:
+            items.append(create_media_item(path, caption))
+    
+    return f'<div class="gallery-container"><div class="gallery" id="gallery">{"".join(items)}</div></div>'
+
+
 def process_folder_streaming(folder_path: str, output_path: str, prompt_template: str, output_formats: List[str]):
     """Generator function for real-time Gallery updates with streaming results"""
     if not folder_path or not Path(folder_path).exists():
@@ -106,46 +165,6 @@ def process_folder_streaming(folder_path: str, output_path: str, prompt_template
         gallery_results[0] = (first_item[0], summary_caption)
     
     yield gallery_results
-
-
-def create_status_msg(status, i, total, filename, media_type="", extra=""):
-    """Create standardized status message"""
-    type_info = f"Type: {media_type}\n" if media_type else ""
-    return f"{status} ({i}/{total})\n\n{filename}\n\n{type_info}{extra}"
-
-
-def convert_path_for_web(path):
-    """Convert file path for web serving"""
-    try:
-        return str(path).replace('\\', '/') if Path(path).is_absolute() else str(Path(path).relative_to(Path.cwd())).replace('\\', '/')
-    except ValueError:
-        return str(path).replace('\\', '/')
-
-
-def create_media_item(path, caption):
-    """Create HTML for single media item"""
-    web_path = convert_path_for_web(path)
-    is_video = Path(path).suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
-    
-    if is_video:
-        return f'<div class="hf-gallery-item video" onmouseover="this.querySelector(\'video\').play().catch(e=>console.log(\'Video play failed:\', e))" onmouseout="const v=this.querySelector(\'video\'); v.pause(); v.currentTime=0;" onclick="const v=this.querySelector(\'video\'); if(v.paused) v.play(); else v.pause();"><video muted loop preload="auto"><source src="/gradio_api/file={web_path}" type="video/mp4"></video><div class="play-overlay">▶</div><div class="caption">{caption}</div></div>'
-    else:
-        return f'<div class="hf-gallery-item image" onclick="window.open(this.querySelector(\'img\').src, \'_blank\');"><img src="/gradio_api/file={web_path}" alt="Generated image" loading="lazy"><div class="caption">{caption}</div></div>'
-
-
-def create_hf_style_gallery(gallery_results):
-    """Create HuggingFace-style widget gallery with compact HTML generation"""
-    if not gallery_results:
-        return '<div class="hf-gallery-empty">No results yet...</div>'
-    
-    items = []
-    for path, caption in gallery_results:
-        if path == "error":
-            items.append(f'<div class="hf-gallery-item error"><div class="caption">{caption}</div></div>')
-        else:
-            items.append(create_media_item(path, caption))
-    
-    return f'<div class="hf-gallery-container"><div class="hf-gallery" id="hf-gallery">{"".join(items)}</div></div>'
 
 
 def list_prompt_templates():
