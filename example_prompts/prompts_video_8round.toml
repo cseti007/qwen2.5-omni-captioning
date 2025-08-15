@@ -1,0 +1,95 @@
+# =============================================================================
+# VLLM Qwen2.5-Omni Prompts Configuration
+# =============================================================================
+
+[general]
+trigger_word = "t3st_c0nc3pt"  # Optional trigger word for captions
+
+[round1]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "You are a helpful assistant that describes videos in detail."
+user_prompt = '''Describe the video in details focusing on the following main topics:
+1. **Main Content:**
+    * What is the primary focus of the scene?
+    * Who are the main characters visible?
+'''
+
+[round2]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "Describe the video in details focusing on the following main topics:"
+user_prompt = '''
+ **Object and Character Details:**
+    * Don't refer to characters as 'individual', 'characters' and 'persons', instead always use their gender or refer to them with their gender.
+    * Describe the appearance in detail
+    * What notable objects are present?
+'''
+
+
+[round3]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "Describe the video in details focusing on the following main topics:"
+user_prompt = '''
+**Actions and Movement:**
+    * Describe ALL movements, no matter how subtle.
+    * Specify the exact type of movement (walking, running, etc.).
+    * Note the direction and speed of movements.
+'''
+
+
+[round4]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "Describe the video in details focusing on the following main topics:"
+user_prompt = '''
+**Background Elements:**
+    * Describe the setting and environment.
+    * Note any environmental changes.
+'''
+
+
+[round5]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "Describe the video in details focusing on the following main topics:"
+user_prompt = '''
+**Visual Style:**
+    * Describe the lighting and color palette.
+    * Note any special effects or visual treatments.
+    * What is the overall style of the video? (e.g., realistic, animated, artistic, documentary)
+'''
+
+
+[round6]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "Describe the video in details focusing on the following main topics:"
+user_prompt = '''
+**Camera Work:**
+    * Describe EVERY camera angle change.
+    * Note the distance from subjects (close-up, medium, wide shot).
+    * Describe any camera movements (pan, tilt, zoom).
+'''
+
+
+[round7]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "Describe the video in details focusing on the following main topics:"
+user_prompt = '''
+**Scene Transitions:**
+    * How does each shot transition to the next?
+    * Note any changes in perspective or viewing angle.
+'''
+
+
+
+[round8]
+mode = "text"  # "multimodal" | "text"
+system_prompt = "You are an expert video caption refiner. Your task is to improve video captions based on specific instructions."
+user_prompt = '''
+    **Summarize the generated caption in 500 tokens, but with the following modifications:**
+        * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
+        * Call the main character: {trigger_word}
+        * Do not mention your task
+        * Don't use references to video such as "the video begins" or "the video features" etc., but keep those sentences meaningful
+        * Mention the clothing details of the characters
+        * Use only declarative sentences
+        * Don't mention the style of the video
+        * Don't mention the name of the characters
+'''

@@ -1,0 +1,56 @@
+# =============================================================================
+# VLLM Qwen2.5-Omni Prompts Configuration
+# =============================================================================
+
+[general]
+trigger_word = "csetiarcane style"  # Optional trigger word for captions
+
+[round1]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "You are a highly attentive assistant that describes images and videos with extreme frame-by-frame precision."
+user_prompt = '''
+Describe the video in extreme detail, with these guidelines:
+
+**Object and Character Details:**
+    * Don't refer to characters as 'individual', 'characters' and 'persons', instead always use their gender or refer to them with their gender.
+    * Describe the appearance in detail
+    * What notable objects are present?
+
+**Actions and Movement:**
+    * Describe ALL movements, no matter how subtle.
+    * Specify the exact type of movement (walking, running, etc.).
+    * Note the direction and speed of movements.
+
+**Background Elements:**
+    * Describe the setting and environment.
+    * Note any environmental changes.
+
+**Visual:**
+    * Describe the lighting and color palette.
+    * Note any special effects or visual treatments.
+    * DO NOT MENTION the overall style of the video!
+
+**Camera Work:**
+    * Describe EVERY camera angle change.
+    * Note the distance from subjects (close-up, medium, wide shot).
+    * Describe any camera movements (pan, tilt, zoom).
+
+**Scene Transitions:**
+    * How does each shot transition to the next?
+    * Note any changes in perspective or viewing angle.
+
+Please be extremely specific and detailed in your description. If you notice any movement or changes, describe them explicitly.
+'''
+
+[round2]
+mode = "text"  # "multimodal" | "text"
+system_prompt = "You are an expert video caption refiner. Your task is to improve video captions based on specific instructions."
+user_prompt = '''
+    **Summarize the generated caption in 500 tokens, but with the following modifications:**
+        * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
+        * Do not mention your task
+        * Don't use references to video such as "the video begins" or "the video features" etc., but keep those sentences meaningful
+        * Use only declarative sentences
+        * Don't mention the style of the video
+        * Don't mention the name of the characters or the movie
+'''

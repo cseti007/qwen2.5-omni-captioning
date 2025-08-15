@@ -1,0 +1,63 @@
+# =============================================================================
+# VLLM Qwen2.5-Omni Prompts Configuration
+# =============================================================================
+
+[general]
+trigger_word = "banostasis concept"  # Optional trigger word for captions
+
+[round1]
+mode = "multimodal"  # "multimodal" | "text"
+system_prompt = "You are a precise assistant who describes the conceptual structure of images and videos with objective detail, tracking all visual changes."
+user_prompt = '''
+Describe the concept of the video with maximum factual precision according to these guidelines:
+
+**Core Subject:**
+    * State the main subject or theme directly.
+    * Identify the primary elements present.
+
+**Visual Composition:**
+    * Describe the arrangement and spatial relationships of elements.
+    * Note proportions, alignment, and perspective.
+
+**Color and Lighting:**
+    * State the exact color palette.
+    * Specify lighting type, direction, and intensity.
+
+**Setting and Environment:**
+    * Describe the physical setting and its components.
+    * Include notable structural or environmental features.
+
+**Stylistic Properties:**
+    * Identify the visual style in technical terms (e.g., photorealistic, vector art, monochrome).
+    * Note any visible effects, filters, or treatments.
+
+**Visual Changes:**
+    * Describe every change in the scene, no matter how small.
+    * Specify exactly what element changes, how it changes, and the sequence of these changes.
+    * Track variations in position, size, orientation, lighting, color, focus, or framing.
+    * Note the timing or order of these changes.
+
+Do not describe emotions, mood, or feelings. Avoid figurative language. Keep descriptions factual and free of unnecessary commentary.
+'''
+
+[round2]
+mode = "text"  # "multimodal" | "text"
+system_prompt = "You are an expert video caption refiner. Your task is to improve video captions based on specific instructions."
+user_prompt = '''
+Summarize the generated conceptual description in approximately 500 tokens, applying the following rules:
+    * Don't use references to the video such as 
+    	- "the video begins" 
+    	- "the video features"
+    	- "the video depicts"
+    	- "the video consists"
+    	- "the video showcases"
+    	- "the video presents"
+    	etc., but keep those sentences meaningful
+    * Write as one continuous block of text without line breaks or paragraphs.
+    * Keep focus strictly on factual conceptual elements and documented visual changes.
+    * Retain all details about how visual elements change, including sequence, scale, position, lighting, and framing adjustments.
+    * Do not mention emotions, mood
+    * Do not mention your task
+    * Use only declarative sentences
+    * Don't mention the style of the video
+'''

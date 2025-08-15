@@ -1,0 +1,36 @@
+# Core dependencies
+torch>=2.0.0
+transformers>=4.52.3
+accelerate
+toml
+
+# VLLM for Qwen2.5-Omni support
+vllm>=0.8.5
+
+# Qwen utilities for multimodal processing
+qwen-omni-utils[decord]
+
+# Gradio web interface
+gradio>=4.0.0
+
+# Image and video processing
+opencv-python
+Pillow>=9.0.0
+numpy>=1.21.0
+
+# Additional dependencies for Qwen2.5-Omni
+setuptools_scm
+torchdiffeq
+resampy
+x_transformers
+
+# Data handling
+pandas
+pathlib2
+
+# Optional: For better performance (requires compatible GPU)
+flash-attn>=2.0.0
+
+# Development and logging
+tqdm
+logging

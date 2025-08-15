@@ -1,0 +1,7 @@
+captions/
+images/
+videos/
+__pycache__/
+*.py[cod]
+*.log
+*_bak.md

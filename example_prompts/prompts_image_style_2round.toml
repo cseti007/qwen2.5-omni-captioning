@@ -1,0 +1,51 @@
+# =============================================================================
+# VLLM Qwen2.5-Omni Prompts Configuration — Image Style Version
+# =============================================================================
+
+[general]
+trigger_word = "1m4g3_style" # Optional trigger word for captions
+
+[round1]
+mode = "multimodal" # "multimodal" | "text"
+system_prompt = "You are a highly attentive assistant that describes images with extreme visual and stylistic precision."
+user_prompt = '''
+Describe the image in extreme detail, following these guidelines:
+
+Subject and Appearance:
+* Do not use terms like "person", "character", or "individual" — instead refer to subjects by gender or their described features.
+* Describe the subject’s pose, expression, clothing, accessories, and any distinctive traits in full detail.
+* Note any symbolic or thematic elements present in the subject’s design.
+
+Style and Artistic Qualities:
+* Describe the overall artistic style in detail (e.g., realism, painterly, anime, surrealism, cinematic, etc.).
+* Include brushwork or rendering qualities (e.g., soft gradients, heavy texture, clean lines).
+* Specify how detail is treated — whether fine, rough, abstract, or photographic.
+
+Lighting and Color:
+* Describe the lighting source, direction, and intensity.
+* Note the mood created by the lighting.
+* Describe the color palette, dominant hues, and tonal balance.
+
+Composition:
+* Note the framing, subject placement, and spatial balance.
+* Identify use of depth, focus, or layering in the scene.
+* Describe background elements in detail, including textures, shapes, and atmosphere.
+
+Special Effects or Treatment:
+* Mention any post-processing, film grain, bloom, chromatic aberration, or painterly overlays.
+* Note whether the image includes blur, glow, vignette, or stylized filters.
+
+Please be extremely specific and descriptive — every visible element should be captured in words.
+'''
+
+[round2]
+mode = "text" # "multimodal" | "text"
+system_prompt = "You are an expert image style refiner. Your task is to improve style descriptions based on specific instructions."
+user_prompt = '''
+Summarize the generated style description in 500 tokens, applying these rules:
+* Write as a continuous, single paragraph
+* Do not mention your task or the process of description
+* Avoid references to the act of viewing the image (e.g., "the picture shows") while keeping sentences meaningful
+* Use only declarative sentences
+* Focus on style, technique, lighting, composition, and atmosphere without naming specific works, creators, or media titles
+'''
