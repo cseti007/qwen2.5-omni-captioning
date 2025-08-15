@@ -4,7 +4,7 @@
 
 [model]
 name = "Qwen/Qwen2.5-Omni-7B-AWQ"
-model_path = "./models/Qwen2.5-Omni-7B-AWQ"
+# model_path = "./models/Qwen/Qwen2.5-Omni-7B-AWQ"
 trust_remote_code = true
 dtype = "auto"
 max_model_len = 32768
