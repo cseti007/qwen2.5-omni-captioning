@@ -4,15 +4,19 @@ transformers>=4.52.3
 accelerate
 toml
 
-# VLLM (specific fork for Qwen2.5-Omni support)
-# Note: Install VLLM from Qwen's fork for full Qwen2.5-Omni support
-# git+https://github.com/fyabc/vllm.git@qwen2_omni_public
-
-# Alternative: Use standard VLLM (text output only)
-vllm>=0.8.5  # or just: vllm (for latest stable)
+# VLLM for Qwen2.5-Omni support
+vllm>=0.8.5
 
 # Qwen utilities for multimodal processing
 qwen-omni-utils[decord]
+
+# Gradio web interface
+gradio>=4.0.0
+
+# Image and video processing
+opencv-python
+Pillow>=9.0.0
+numpy>=1.21.0
 
 # Additional dependencies for Qwen2.5-Omni
 setuptools_scm
@@ -20,9 +24,13 @@ torchdiffeq
 resampy
 x_transformers
 
-# Optional: For video processing (if custom preprocessing needed)
-# opencv-python
-# librosa
+# Data handling
+pandas
+pathlib2
 
-# Optional: For better performance
-# flash-attn>=2.0.0
+# Optional: For better performance (requires compatible GPU)
+flash-attn>=2.0.0
+
+# Development and logging
+tqdm
+logging

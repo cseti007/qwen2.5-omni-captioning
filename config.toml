@@ -3,45 +3,44 @@
 # =============================================================================
 
 [model]
-name = "Qwen/Qwen2.5-Omni-7B-AWQ"
-# model_path = "./models/Qwen/Qwen2.5-Omni-7B-AWQ"
-trust_remote_code = true
-dtype = "auto"
-max_model_len = 32768
+name = "Qwen/Qwen2.5-Omni-7B-AWQ"           # Model name from HuggingFace
+# model_path = "./models/Qwen/Qwen2.5-Omni-7B-AWQ"  # Local model path (optional)
+trust_remote_code = true                     # Required for Qwen models
+dtype = "auto"                               # Automatic precision selection
+max_model_len = 32768                        # Maximum context length
 
 [hardware]
-gpu_memory_utilization = 0.8
-tensor_parallel_size = 1
-vllm_engine = "v1"  # "v0" | "v1" - VLLM engine version
-
+gpu_memory_utilization = 0.8                # GPU memory usage (0.6-0.9)
+tensor_parallel_size = 1                    # Multi-GPU parallel processing
+vllm_engine = "v1"                          # "v0" | "v1" - VLLM engine version
 
 [generation]
-temperature = 0.0
-max_tokens = 512
-top_p = 0.85
+temperature = 0.0                           # Randomness in generation (0.0 = deterministic)
+max_tokens = 512                            # Maximum tokens per response
+top_p = 0.85                                # Nucleus sampling parameter
 
 [paths]
-input_dir = "./videos"
-output_dir = "./captions/videos"
-output_formats = ["txt", "csv", "json"]
-# output_format = "csv"  - save in one format only
+input_dir = "./videos"                      # Directory containing media files
+output_dir = "./captions/videos"            # Output directory for captions
+output_formats = ["txt", "csv", "json"]     # Multiple output formats
+# output_format = "csv"                     # Single format option (alternative)
 
 [processing]
-mode = "video"  # "video" | "image" | "mixed"
-use_audio_in_video = false
-overwrite_existing = true # overwrite caption files if already exist
-fps = 16.0
-batch_size = 2  # Number of media files to process simultaneously
-batch_mode = true  # Enable batch processing for better performance
-save_conversations = true  # Save detailed conversation logs for each file
-max_num_batched_tokens = 16384  # V1 optimization: token budget per step
+mode = "video"                              # "video" | "image" | "mixed"
+use_audio_in_video = false                  # Enable audio processing in videos
+overwrite_existing = true                   # Overwrite existing caption files
+fps = 16.0                                  # Video frame rate for processing
+batch_size = 2                             # Files processed simultaneously
+batch_mode = true                           # Enable batch processing for speed
+save_conversations = true                   # Save detailed conversation logs
+max_num_batched_tokens = 16384             # V1 optimization: token budget per step
 
-# Extensions based on mode
+# Supported file extensions
 video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
 image_extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
 
 [conversation]
-enable_multi_round = true
+enable_multi_round = true                   # Enable multi-round conversation
 
 [files]
-prompts_config = "./example_prompts/prompts.toml"  # Path to prompts configuration file
+prompts_config = "./example_prompts/prompts.toml"  # Path to prompts configuration

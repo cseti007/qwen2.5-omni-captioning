@@ -1,230 +1,171 @@
 # VLLM Qwen2.5-Omni Captioning
 
-This is a node based captioning tool using the multimodal Qwen2.5-Omni 7B model.
+**Note:** This is a fun project built with vibecoding. I'm not a developer, so I might not be able to help with every technical issue.
 
+This is a node-based image and video captioning tool using Qwen2.5-Omni models with VLLM backend.
+
+## ToC
 - [VLLM Qwen2.5-Omni Captioning](#vllm-qwen25-omni-captioning)
+  - [ToC](#toc)
   - [Features](#features)
-    - [Multimodal support](#multimodal-support)
-    - [Advanced features](#advanced-features)
-  - [Installation \& Setup](#installation--setup)
+  - [Model support](#model-support)
+  - [Installation](#installation)
     - [Prerequisites](#prerequisites)
-      - [Python 3.11 Installation](#python-311-installation)
-      - [Clone this repo](#clone-this-repo)
-    - [Virtual Environment Setup](#virtual-environment-setup)
-      - [1. Create Virtual Environment](#1-create-virtual-environment)
-      - [2. Activate Virtual Environment](#2-activate-virtual-environment)
-    - [Dependencies Installation](#dependencies-installation)
-  - [Quick Start](#quick-start)
-    - [Basic Usage](#basic-usage)
+    - [Setup](#setup)
+  - [Usage](#usage)
+    - [Command Line](#command-line)
+    - [Web Interface](#web-interface)
   - [Configuration](#configuration)
-    - [System Configuration (`config.toml`)](#system-configuration-configtoml)
-    - [Prompts Configuration (`prompts.toml`)](#prompts-configuration-promptstoml)
-  - [Performance Optimization](#performance-optimization)
-    - [Batch Processing](#batch-processing)
-    - [GPU Settings](#gpu-settings)
-    - [Processing Modes](#processing-modes)
-  - [Advanced Usage](#advanced-usage)
-    - [Multi-Round Conversation](#multi-round-conversation)
-    - [Custom Prompts](#custom-prompts)
-    - [Output Formats](#output-formats)
-      - [TXT Format](#txt-format)
-      - [CSV Format](#csv-format)
-      - [JSON Format](#json-format)
-  - [Acknowledgments](#acknowledgments)
+    - [System Config (`config.toml`)](#system-config-configtoml)
+    - [Prompts Config (`example_prompts/prompts.toml`)](#prompts-config-example_promptspromptstoml)
 
 ## Features
-### Multimodal support
-- Video captioning
-- Image captioning
 
-### Advanced features
-- Batch processing: process multiple files simultaneously
-- VLLM backend
-- Multi-round conversation: The system processes media through multiple sequential rounds (configurable), where each round refines and improves the caption based on the previous round's output.
-- Multiple output formats: can create TXT, CSV, JSON output simultaneously
+- **Multimodal**: Video and image captioning
+- **Web GUI**: Gradio interface with gallery view
+- **Batch processing**: Multiple files simultaneously
+- **Multi-round conversation**: The system processes media through multiple sequential rounds (configurable), where each round refines and improves the caption based on the previous round's output.
+- **Multiple outputs**: TXT, CSV, JSON formats
 
-## Installation & Setup
+## Model support
+- Qwen2.5-Omni-7B-AWQ - It was only tested with this  model.
+However, the code should work with the other models from the Qwen2.5-Omni family out of the box.
+
+## Installation
 
 ### Prerequisites
+- Python 3.11
+- CUDA-compatible GPU
 
-#### Python 3.11 Installation
-
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install python3.11 python3.11-venv python3.11-dev
-```
-
-**CentOS/RHEL/Fedora:**
-```bash
-# Fedora
-sudo dnf install python3.11 python3.11-venv
-
-# CentOS/RHEL (requires EPEL)
-sudo yum install epel-release
-sudo yum install python311 python311-venv
-```
-
-**macOS:**
-```bash
-# Using Homebrew
-brew install python@3.11
-
-# Using pyenv
-pyenv install 3.11.0
-pyenv global 3.11.0
-```
-
-**Windows:**
-- Download Python 3.11 from [python.org](https://www.python.org/downloads/)
-- During installation, check "Add Python to PATH"
-- Verify with: `python --version`
-
-#### Clone this repo
-
+### Setup
 ```bash
 git clone <repository-url>
-```
-
-### Virtual Environment Setup
-
-#### 1. Create Virtual Environment
-```bash
-# Navigate to project directory
 cd <repository-name>
-
-# Create virtual environment
 python3.11 -m venv venv
-```
-
-#### 2. Activate Virtual Environment
-
-**Linux/macOS:**
-```bash
-source venv/bin/activate
-```
-
-**Windows:**
-```bash
-# Command Prompt
-venv\Scripts\activate
-
-# PowerShell
-venv\Scripts\Activate.ps1
-```
-
-You should see `(venv)` in your terminal prompt when activated.
-
-### Dependencies Installation
-
-```bash
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 ```
 
-## Quick Start
+## Usage
 
-### Basic Usage
+### Command Line
 ```bash
-# Process images
 python main.py
-
-# Process videos  
-python main.py --config config_video.toml
-
-# Custom configuration
-python main.py --config my_custom_config.toml
+python main.py --config custom_config.toml
 ```
+
+### Web Interface
+```bash
+python gradio_app.py
+```
+Access at: http://localhost:7860
+
+**Note:** The GUI provides basic functionality (folder selection, prompt template switching, output formats). For advanced configuration and custom prompts, edit the config files directly.
+
+**Note**: The model loads during the first captioning task, so the initial process takes longer. Check the console output to monitor the loading progress.
 
 ## Configuration
 
-### System Configuration (`config.toml`)
+### System Config (`config.toml`)
 ```toml
 [model]
-name = "Qwen/Qwen2.5-Omni-7B-AWQ"
-trust_remote_code = true
-dtype = "auto"
-max_model_len = 24576
+name = "Qwen/Qwen2.5-Omni-7B-AWQ"           # Model name from HuggingFace
+# model_path = "./models/Qwen/Qwen2.5-Omni-7B-AWQ"  # Local model path (optional)
+trust_remote_code = true                     # Required for Qwen models
+dtype = "auto"                               # Automatic precision selection
+max_model_len = 32768                        # Maximum context length
 
 [hardware]
-gpu_memory_utilization = 0.9
-tensor_parallel_size = 1
+gpu_memory_utilization = 0.8                # GPU memory usage (0.6-0.9)
+tensor_parallel_size = 1                    # Multi-GPU parallel processing
+vllm_engine = "v1"                          # "v0" | "v1" - VLLM engine version
+
+[generation]
+temperature = 0.0                           # Randomness in generation (0.0 = deterministic)
+max_tokens = 512                            # Maximum tokens per response
+top_p = 0.85                                # Nucleus sampling parameter
 
 [paths]
-input_dir = "./images"
-output_dir = "./captions"
-output_formats = ["txt", "csv", "json"]
+input_dir = "./videos"                      # Directory containing media files
+output_dir = "./captions/videos"            # Output directory for captions
+output_formats = ["txt", "csv", "json"]     # Multiple output formats
+# output_format = "csv"                     # Single format option (alternative)
 
 [processing]
-mode = "image"  # "video" | "image"
-batch_size = 4
-batch_mode = true
-overwrite_existing = true
+mode = "video"                              # "video" | "image" | "mixed"
+use_audio_in_video = false                  # Enable audio processing in videos
+overwrite_existing = true                   # Overwrite existing caption files
+fps = 16.0                                  # Video frame rate for processing
+batch_size = 2                             # Files processed simultaneously
+batch_mode = true                           # Enable batch processing for speed
+save_conversations = true                   # Save detailed conversation logs
+max_num_batched_tokens = 16384             # V1 optimization: token budget per step
+
+# Supported file extensions
+video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
+image_extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
 
 [conversation]
-enable_multi_round = true
-rounds = 2
+enable_multi_round = true                   # Enable multi-round conversation
 
 [files]
-prompts_config = "prompts.toml"
+prompts_config = "./example_prompts/prompts.toml"  # Path to prompts configuration
 ```
 
-### Prompts Configuration (`prompts.toml`)
-Separate configuration file for prompts allows easy customization:
-- **Video prompts**: Specialized for stop-motion and video analysis
-- **Image prompts**: Optimized for art and photography analysis
-- **Multiple prompt sets**: Alternative configurations
-
-## Performance Optimization
-
-### Batch Processing
-- **Automatic scaling**: Videos use smaller batches due to memory requirements
-- **Smart fallback**: Falls back to single processing if batch fails
-- **Memory aware**: Adjusts batch size based on GPU memory
-
-### GPU Settings
+### Prompts Config (`example_prompts/prompts.toml`)
 ```toml
-[hardware]
-gpu_memory_utilization = 0.9  # Adjust based on your GPU
-tensor_parallel_size = 1       # Increase for multi-GPU setups
-```
+[general]
+trigger_word = "MyTr1gg3r"                  # Optional trigger word for captions
 
-### Processing Modes
-```toml
-[processing]
-batch_size = 4
-batch_mode = true     # Enable for performance boost
-```
+[round1]
+mode = "multimodal"                         # "multimodal" | "text" - input type
+system_prompt = "You are a highly attentive assistant that describes images and videos with extreme frame-by-frame precision."
+user_prompt = '''
+Describe the video in extreme detail, with these guidelines:
 
-## Advanced Usage
+**Object and Character Details:**
+    * Don't refer to characters as 'individual', 'characters' and 'persons', instead always use their gender or refer to them with their gender.
+    * Describe the appearance in detail
+    * What notable objects are present?
 
-### Multi-Round Conversation
-The system supports multi-round caption refinement:
-1. **Round 1**: Detailed analysis of visual content
-2. **Round 2**: Refined, polished caption suitable for catalogs
+**Actions and Movement:**
+    * Describe ALL movements, no matter how subtle.
+    * Specify the exact type of movement (walking, running, etc.).
+    * Note the direction and speed of movements.
 
-### Custom Prompts
-Create custom prompt configurations for different use cases:
-- Art analysis prompts
-- Technical documentation
-- Social media captions
-- Academic descriptions
+**Background Elements:**
+    * Describe the setting and environment.
+    * Note any environmental changes.
 
-### Output Formats
+**Visual Style:**
+    * Describe the lighting and color palette.
+    * Note any special effects or visual treatments.
+    * What is the overall style of the video? (e.g., realistic, animated, artistic, documentary)
 
-#### TXT Format
-Plain text captions for simple use cases.
+**Camera Work:**
+    * Describe EVERY camera angle change.
+    * Note the distance from subjects (close-up, medium, wide shot).
+    * Describe any camera movements (pan, tilt, zoom).
 
-#### CSV Format  
-Consolidated dataset with filename and caption columns.
+**Scene Transitions:**
+    * How does each shot transition to the next?
+    * Note any changes in perspective or viewing angle.
 
-#### JSON Format
-Rich metadata including:
-- Processing timestamp
-- Model configuration
-- Technical details
-- Original file paths
+Please be extremely specific and detailed in your description. If you notice any movement or changes, describe them explicitly.
+'''
 
-## Acknowledgments
-
-- **Qwen Team**: For the excellent Qwen2.5-Omni model
-- **VLLM Team**: For the high-performance inference engine
+[round2]
+mode = "text"                               # Text-only mode uses previous round's output
+system_prompt = "You are an expert video caption refiner. Your task is to improve video captions based on specific instructions."
+user_prompt = '''
+    **Summarize the generated caption in 500 tokens, but with the following modifications:**
+        * Write continuously, don't use multiple paragraphs, make the text form one coherent whole
+        * Call the main character: {trigger_word}
+        * Do not mention your task
+        * Don't use references to video such as "the video begins" or "the video features" etc., but keep those sentences meaningful
+        * Mention the clothing details of the characters
+        * Use only declarative sentences
+        * Don't mention the style of the video
+        * Don't mention the name of the characters
+'''

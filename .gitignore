@@ -4,4 +4,3 @@ videos/
 __pycache__/
 *.py[cod]
 gradio_app.log
-config_arcane_style.toml
