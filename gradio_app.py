@@ -13,7 +13,7 @@ import logging
 import toml
 
 # Import existing modules
-from main import load_config, create_inference_engine, process_single_media
+from main import create_inference_engine, process_single_media
 from vllm_inference import list_all_supported_files, detect_media_type
 from output_writer import check_existing_caption
 
@@ -27,6 +27,75 @@ processing_state = {
     'stop_event': threading.Event(),
     'inference_engine': None
 }
+
+
+def load_config_for_gui(config_path: str = "config.toml", prompt_template: str = "prompts.toml") -> Dict[str, Any]:
+    """Load configuration for GUI with custom prompt template"""
+    config_file = Path(config_path)
+    
+    if not config_file.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    
+    # Load system configuration
+    with open(config_file, 'r', encoding='utf-8') as f:
+        config = toml.load(f)
+    
+    # Load prompts configuration with GUI selection
+    prompts_file = f"./example_prompts/{prompt_template}"
+    prompts_path = Path(prompts_file)
+    
+    if not prompts_path.exists():
+        raise FileNotFoundError(f"Prompts file not found: {prompts_file}")
+    
+    with open(prompts_path, 'r', encoding='utf-8') as f:
+        prompts_config = toml.load(f)
+    
+    # Merge prompts into main config
+    config['prompts'] = prompts_config
+    
+    # Ensure output directory exists
+    Path(config['paths']['output_dir']).mkdir(parents=True, exist_ok=True)
+    
+    logging.info(f"GUI loaded system config: {config_path}")
+    logging.info(f"GUI loaded prompts config: {prompts_file}")
+    
+    return config
+
+
+def update_inference_engine_prompts(prompt_template: str):
+    """Update prompts in existing inference engine without model reload"""
+    if processing_state['inference_engine'] is None:
+        return
+    
+    # Load new prompts
+    prompts_file = f"./example_prompts/{prompt_template}"
+    prompts_path = Path(prompts_file)
+    
+    if not prompts_path.exists():
+        logging.warning(f"Prompts file not found: {prompts_file}")
+        return
+    
+    with open(prompts_path, 'r', encoding='utf-8') as f:
+        new_prompts_config = toml.load(f)
+    
+    # Debug: Log old and new prompts
+    old_prompts = processing_state['inference_engine'].config.get('prompts', {})
+    logging.info(f"🔍 OLD prompts config: {list(old_prompts.keys())}")
+    logging.info(f"🔍 NEW prompts config: {list(new_prompts_config.keys())}")
+    
+    # Update inference engine config directly
+    processing_state['inference_engine'].config['prompts'] = new_prompts_config
+    processing_state['inference_engine'].prompt_processor.config = processing_state['inference_engine'].config
+    
+    # Clear conversation history to avoid conflicts
+    processing_state['inference_engine'].conversation_manager.clear()
+    
+    # Debug: Verify the update
+    updated_prompts = processing_state['inference_engine'].config.get('prompts', {})
+    logging.info(f"🔍 UPDATED prompts config: {list(updated_prompts.keys())}")
+    
+    logging.info(f"📋 Updated inference engine prompts to: {prompt_template}")
+    logging.info(f"🧹 Cleared conversation history")
 
 
 def create_status_msg(status, i, total, filename, media_type="", extra=""):
@@ -94,11 +163,10 @@ def process_folder_streaming(folder_path: str, output_path: str, prompt_template
         yield [("error", "⚠️ Invalid folder path!")]
         return
     
-    # Load and configure using existing main.py function
-    config = load_config()
+    # Load and configure using GUI-specific config function
+    config = load_config_for_gui("config.toml", prompt_template)
     config['paths']['input_dir'] = folder_path
     config['paths']['output_dir'] = output_path
-    config['files']['prompts_config'] = f"./example_prompts/{prompt_template}"
     config['conversation']['enable_multi_round'] = True
     config['paths']['output_formats'] = output_formats
     
@@ -110,17 +178,22 @@ def process_folder_streaming(folder_path: str, output_path: str, prompt_template
         yield [("error", "⚠️ No supported media files found in folder!")]
         return
     
-    # Load model using existing function
+    # Load model or update prompts if engine already exists
     try:
         if processing_state['inference_engine'] is None:
             processing_state['inference_engine'] = create_inference_engine(config)
+        else:
+            # Update prompts without model reload
+            update_inference_engine_prompts(prompt_template)
+            # Update the inference engine's config to use the new prompts
+            processing_state['inference_engine'].config.update(config)
     except Exception as e:
         yield [("error", f"⚠️ Model loading failed: {str(e)}")]
         return
     
     gallery_results = []
     
-    # Process files with stop checking
+    # Process files with stop checking - use the current config with updated prompts
     for i, media_file in enumerate(media_files):
         if processing_state['stop_event'].is_set():
             gallery_results.append((str(media_file), create_status_msg("🛑 STOPPED", i+1, len(media_files), media_file.name, extra="Processing stopped by user")))
@@ -138,6 +211,7 @@ def process_folder_streaming(folder_path: str, output_path: str, prompt_template
                 yield gallery_results
                 break
             
+            # Use the updated config (with new prompts) for processing
             success = process_single_media(str(media_file), processing_state['inference_engine'], config)
             
             if success:
@@ -204,6 +278,21 @@ def validate_folder(folder_path: str):
 
 def process_folder_gui(folder_path: str, output_path: str, prompt_template: str, txt_format: bool, json_format: bool, csv_format: bool):
     """GUI wrapper for folder processing with real-time streaming"""
+    # CRITICAL DEBUG: Check if function is even called
+    print(f"\n{'='*60}")
+    print(f"🚀 PROCESS_FOLDER_GUI CALLED - {time.strftime('%H:%M:%S')}")
+    print(f"   folder_path: {folder_path}")
+    print(f"   prompt_template: {prompt_template}")
+    print(f"   current is_processing: {processing_state['is_processing']}")
+    print(f"{'='*60}")
+    
+    # Debug: Check current state
+    logging.info(f"🔍 Starting processing - current state: is_processing={processing_state['is_processing']}")
+    
+    # Force reset state to ensure we can start
+    processing_state['is_processing'] = False
+    processing_state['stop_event'].clear()
+    
     # Determine output formats
     output_formats = []
     if txt_format:
@@ -214,21 +303,28 @@ def process_folder_gui(folder_path: str, output_path: str, prompt_template: str,
         output_formats.append("csv")
     
     if not output_formats:
+        print("❌ No output formats selected!")
         yield create_hf_style_gallery([("error", "⚠️ Please select at least one output format!")])
         return
     
     # Start processing
     processing_state['is_processing'] = True
-    processing_state['stop_event'].clear()
-    logging.info("Processing started")
+    logging.info("🚀 Processing started")
+    print(f"✅ Processing starting with template: {prompt_template}")
     
     try:
         for gallery_results in process_folder_streaming(
             folder_path, output_path, prompt_template, output_formats
         ):
             yield create_hf_style_gallery(gallery_results)
+    except Exception as e:
+        logging.error(f"❌ Processing failed: {e}")
+        print(f"❌ Exception in processing: {e}")
+        yield create_hf_style_gallery([("error", f"⚠️ Processing failed: {str(e)}")])
     finally:
         processing_state['is_processing'] = False
+        logging.info("🏁 Processing finished - state reset")
+        print(f"🏁 Processing finished - state reset")
 
 
 def stop_processing_gui():
