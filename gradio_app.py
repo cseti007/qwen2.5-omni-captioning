@@ -15,173 +15,122 @@ import toml
 # Import existing modules
 from main import load_config, create_inference_engine, process_single_media
 from vllm_inference import list_all_supported_files, detect_media_type
+from output_writer import check_existing_caption
 
 # Set static paths for direct file serving
 gr.set_static_paths(paths=["videos/", "images/", "test_media/", "captions/", "static/"])
 
 
-class CaptionProcessor:
-    def __init__(self):
-        self.inference_engine = None
-        self.is_processing = False
-        self.stop_event = threading.Event()
-        self.current_thread = None
+# Global processing state for stop functionality
+processing_state = {
+    'is_processing': False,
+    'stop_event': threading.Event(),
+    'inference_engine': None
+}
+
+
+def process_folder_streaming(folder_path: str, output_path: str, prompt_template: str, output_formats: List[str]):
+    """Generator function for real-time Gallery updates with streaming results"""
+    if not folder_path or not Path(folder_path).exists():
+        yield [("error", "⚠️ Invalid folder path!")]
+        return
     
-    def load_model(self, config):
-        """Load the inference model"""
-        if self.inference_engine is None:
-            self.inference_engine = create_inference_engine(config)
-        return self.inference_engine
+    # Load and configure using existing main.py function
+    config = load_config()
+    config['paths']['input_dir'] = folder_path
+    config['paths']['output_dir'] = output_path
+    config['files']['prompts_config'] = f"./example_prompts/{prompt_template}"
+    config['conversation']['enable_multi_round'] = True
+    config['paths']['output_formats'] = output_formats
     
-    def process_folder_streaming(self, folder_path: str, output_path: str, prompt_template: str, output_formats: List[str]):
-        """
-        Generator function for real-time Gallery updates with streaming results
-        """
-        if not folder_path or not Path(folder_path).exists():
-            yield [("error", "⚠️ Invalid folder path!")]
-            return
+    logging.info(f"📋 Using prompt template: {prompt_template}")
+    
+    # Find media files using existing function
+    media_files = list_all_supported_files(folder_path)
+    if not media_files:
+        yield [("error", "⚠️ No supported media files found in folder!")]
+        return
+    
+    # Load model using existing function
+    try:
+        if processing_state['inference_engine'] is None:
+            processing_state['inference_engine'] = create_inference_engine(config)
+    except Exception as e:
+        yield [("error", f"⚠️ Model loading failed: {str(e)}")]
+        return
+    
+    gallery_results = []
+    
+    # Process files with stop checking
+    for i, media_file in enumerate(media_files):
+        if processing_state['stop_event'].is_set():
+            gallery_results.append((str(media_file), create_status_msg("🛑 STOPPED", i+1, len(media_files), media_file.name, extra="Processing stopped by user")))
+            yield gallery_results
+            break
         
-        # Load config from file
-        config = load_config()
-
-        # Override config values from GUI BEFORE logging
-        config['paths']['input_dir'] = folder_path
-        config['paths']['output_dir'] = output_path
-        config['files']['prompts_config'] = prompt_template  # Fixed: just the filename
-        config['conversation']['enable_multi_round'] = True
-        config['paths']['output_formats'] = output_formats
-
-        logging.info(f"📋 Using prompt template: {config['files']['prompts_config']}")
-
-        # Load prompts using the overridden config
-        config = self._load_config_with_prompts(config)
-        
-        # Find media files
-        media_files = list_all_supported_files(folder_path)
-        if not media_files:
-            yield [("error", "⚠️ No supported media files found in folder!")]
-            return
-        
-        # Load model
         try:
-            self.load_model(config)
-        except Exception as e:
-            yield [("error", f"⚠️ Model loading failed: {str(e)}")]
-            return
-        
-        gallery_results = []
-        
-        # Process files with stop checking
-        for i, media_file in enumerate(media_files):
-            if self.stop_event.is_set():
-                gallery_results.append((
-                    str(media_file),
-                    f"🛑 STOPPED\n\n{media_file.name}\n\nProcessing stopped by user at {i+1}/{len(media_files)}"
-                ))
+            media_type = detect_media_type(str(media_file))
+            
+            gallery_results.append((str(media_file), create_status_msg("🔄 PROCESSING", i+1, len(media_files), media_file.name, media_type, "Generating caption...")))
+            yield gallery_results
+            
+            if processing_state['stop_event'].is_set():
+                gallery_results[-1] = (str(media_file), create_status_msg("🛑 STOPPED", i+1, len(media_files), media_file.name, extra="Stopped before processing"))
                 yield gallery_results
                 break
             
-            try:
-                media_type = detect_media_type(str(media_file))
-                
-                gallery_results.append((
-                    str(media_file),
-                    f"🔄 PROCESSING ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nType: {media_type}\nGenerating caption..."
-                ))
-                yield gallery_results
-                
-                if self.stop_event.is_set():
-                    gallery_results[-1] = (
-                        str(media_file),
-                        f"🛑 STOPPED\n\n{media_file.name}\n\nStopped before processing"
-                    )
-                    yield gallery_results
-                    break
-                
-                success = process_single_media(str(media_file), self.inference_engine, config)
-                
-                if success:
-                    caption_text = self._read_generated_caption(str(media_file), config)
-                    gallery_results[-1] = (
-                        str(media_file),
-                        f"✅ COMPLETED ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nType: {media_type}\n\nCaption:\n{caption_text}"
-                    )
-                else:
-                    gallery_results[-1] = (
-                        str(media_file),
-                        f"⚠️ FAILED ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nType: {media_type}\n\nFailed to generate caption"
-                    )
-                
-                yield gallery_results
-                            
-            except Exception as e:
-                gallery_results[-1] = (
-                    str(media_file),
-                    f"⚠️ ERROR ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nError: {str(e)}"
-                )
-                yield gallery_results
-        
-        successful = sum(1 for _, caption in gallery_results if "✅ COMPLETED" in caption)
-        failed = len(gallery_results) - successful
-        
-        if gallery_results:
-            first_item = gallery_results[0]
-            summary_caption = f"{first_item[1]}\n\n📊 FINAL SUMMARY:\n✅ Successful: {successful}\n⚠️ Failed: {failed}"
-            gallery_results[0] = (first_item[0], summary_caption)
-        
-        yield gallery_results
-    
-    def _read_generated_caption(self, media_path: str, config: Dict[str, Any]) -> str:
-        """Read generated caption from output file"""
-        try:
-            media_file = Path(media_path)
-            output_dir = Path(config['paths']['output_dir'])
-            caption_file = output_dir / f"{media_file.stem}.txt"
+            success = process_single_media(str(media_file), processing_state['inference_engine'], config)
             
-            if caption_file.exists():
-                with open(caption_file, 'r', encoding='utf-8') as f:
-                    return f.read().strip()
-            return "Caption generated but file not found"
+            if success:
+                # Read caption from generated file
+                media_stem = Path(media_file).stem
+                caption_file = Path(config['paths']['output_dir']) / f"{media_stem}.txt"
+                caption_text = caption_file.read_text(encoding='utf-8').strip() if caption_file.exists() else "Caption file not found"
+                
+                gallery_results[-1] = (str(media_file), create_status_msg("✅ COMPLETED", i+1, len(media_files), media_file.name, media_type, f"Caption:\n{caption_text}"))
+            else:
+                gallery_results[-1] = (str(media_file), create_status_msg("⚠️ FAILED", i+1, len(media_files), media_file.name, media_type, "Failed to generate caption"))
+            
+            yield gallery_results
+                        
         except Exception as e:
-            return f"Error reading caption: {str(e)}"
+            gallery_results[-1] = (str(media_file), create_status_msg("⚠️ ERROR", i+1, len(media_files), media_file.name, extra=f"Error: {str(e)}"))
+            yield gallery_results
     
-    def _load_config_with_prompts(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        prompts_file = config.get('files', {}).get('prompts_config', 'prompts.toml')
-        
-        # Ensure relative path points to example_prompts/
-        if not prompts_file.startswith("example_prompts/") and not prompts_file.startswith("./example_prompts/"):
-            prompts_file = f"./example_prompts/{prompts_file}"
-        
-        prompts_path = Path(prompts_file)
-        
-        if prompts_path.exists():
-            with open(prompts_path, 'r', encoding='utf-8') as f:
-                prompts_config = toml.load(f)
-            config['prompts'] = prompts_config
-        else:
-            print(f"⚠️ Prompt file not found: {prompts_path}")
-        
-        return config
+    successful = sum(1 for _, caption in gallery_results if "✅ COMPLETED" in caption)
+    failed = len(gallery_results) - successful
+    
+    if gallery_results:
+        first_item = gallery_results[0]
+        summary_caption = f"{first_item[1]}\n\n📊 FINAL SUMMARY:\n✅ Successful: {successful}\n⚠️ Failed: {failed}"
+        gallery_results[0] = (first_item[0], summary_caption)
+    
+    yield gallery_results
 
+
+def create_status_msg(status, i, total, filename, media_type="", extra=""):
+    """Create standardized status message"""
+    type_info = f"Type: {media_type}\n" if media_type else ""
+    return f"{status} ({i}/{total})\n\n{filename}\n\n{type_info}{extra}"
+
+
+def convert_path_for_web(path):
+    """Convert file path for web serving"""
+    try:
+        return str(path).replace('\\', '/') if Path(path).is_absolute() else str(Path(path).relative_to(Path.cwd())).replace('\\', '/')
+    except ValueError:
+        return str(path).replace('\\', '/')
+
+
+def create_media_item(path, caption):
+    """Create HTML for single media item"""
+    web_path = convert_path_for_web(path)
+    is_video = Path(path).suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
     
-    def start_processing(self):
-        """Start processing and clear stop signal"""
-        self.is_processing = True
-        self.stop_event.clear()
-        logging.info("Processing started")
-    
-    def stop_processing(self):
-        """Stop the current processing"""
-        print(f"🛑 Stop request received at {time.strftime('%H:%M:%S')}")
-        logging.info("Stop processing requested by user")
-        
-        if self.is_processing:
-            self.stop_event.set()
-            print(f"ℹ️ Processing will stop after current file completes")
-            logging.info("Stop signal sent - processing will halt")
-        else:
-            print(f"ℹ️ No active processing to stop")
-            logging.info("Stop requested but no active processing found")
+    if is_video:
+        return f'<div class="hf-gallery-item video" onmouseover="this.querySelector(\'video\').play().catch(e=>console.log(\'Video play failed:\', e))" onmouseout="const v=this.querySelector(\'video\'); v.pause(); v.currentTime=0;" onclick="const v=this.querySelector(\'video\'); if(v.paused) v.play(); else v.pause();"><video muted loop preload="auto"><source src="/gradio_api/file={web_path}" type="video/mp4"></video><div class="play-overlay">▶</div><div class="caption">{caption}</div></div>'
+    else:
+        return f'<div class="hf-gallery-item image" onclick="window.open(this.querySelector(\'img\').src, \'_blank\');"><img src="/gradio_api/file={web_path}" alt="Generated image" loading="lazy"><div class="caption">{caption}</div></div>'
 
 
 def create_hf_style_gallery(gallery_results):
@@ -193,38 +142,10 @@ def create_hf_style_gallery(gallery_results):
     for path, caption in gallery_results:
         if path == "error":
             items.append(f'<div class="hf-gallery-item error"><div class="caption">{caption}</div></div>')
-            continue
-        
-        # Convert path for web serving - fixed with try/catch
-        try:
-            web_path = str(path).replace('\\', '/') if Path(path).is_absolute() else str(Path(path).relative_to(Path.cwd())).replace('\\', '/')
-        except ValueError:
-            web_path = str(path).replace('\\', '/')
-        
-        is_video = Path(path).suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
-        
-        if is_video:
-            items.append(f'''<div class="hf-gallery-item video" onmouseover="this.querySelector('video').play().catch(e=>console.log('Video play failed:', e))" onmouseout="const v=this.querySelector('video'); v.pause(); v.currentTime=0;" onclick="const v=this.querySelector('video'); if(v.paused) v.play(); else v.pause();"><video muted loop preload="auto"><source src="/gradio_api/file={web_path}" type="video/mp4"></video><div class="play-overlay">▶</div><div class="caption">{caption}</div></div>''')
         else:
-            items.append(f'''<div class="hf-gallery-item image" onclick="window.open(this.querySelector('img').src, '_blank');"><img src="/gradio_api/file={web_path}" alt="Generated image" loading="lazy"><div class="caption">{caption}</div></div>''')
+            items.append(create_media_item(path, caption))
     
     return f'<div class="hf-gallery-container"><div class="hf-gallery" id="hf-gallery">{"".join(items)}</div></div>'
-
-def get_universal_allowed_paths():
-    """Get universal allowed paths for all platforms (Windows, Linux, macOS)"""
-    allowed_paths = []
-    
-    # Linux/macOS root
-    if Path("/").exists():
-        allowed_paths.append("/")
-    
-    # Windows drives
-    for drive in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-        drive_path = f"{drive}:\\"
-        if Path(drive_path).exists():
-            allowed_paths.append(drive_path)
-    
-    return allowed_paths
 
 
 def list_prompt_templates():
@@ -238,7 +159,7 @@ def list_prompt_templates():
 
 
 def validate_folder(folder_path: str):
-    """Validate folder path and show file count"""
+    """Validate folder path and show file count using existing functions"""
     if not folder_path:
         return "📁 Please enter a folder path"
     
@@ -262,10 +183,6 @@ def validate_folder(folder_path: str):
         return f"⚠️ Error scanning folder: {str(e)}"
 
 
-# Global processor instance
-processor = CaptionProcessor()
-
-
 def process_folder_gui(folder_path: str, output_path: str, prompt_template: str, txt_format: bool, json_format: bool, csv_format: bool):
     """GUI wrapper for folder processing with real-time streaming"""
     # Determine output formats
@@ -282,15 +199,17 @@ def process_folder_gui(folder_path: str, output_path: str, prompt_template: str,
         return
     
     # Start processing
-    processor.start_processing()
+    processing_state['is_processing'] = True
+    processing_state['stop_event'].clear()
+    logging.info("Processing started")
     
     try:
-        for gallery_results in processor.process_folder_streaming(
+        for gallery_results in process_folder_streaming(
             folder_path, output_path, prompt_template, output_formats
         ):
             yield create_hf_style_gallery(gallery_results)
     finally:
-        processor.is_processing = False
+        processing_state['is_processing'] = False
 
 
 def stop_processing_gui():
@@ -301,7 +220,13 @@ def stop_processing_gui():
     
     logging.info(f"Stop button clicked by user at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     
-    processor.stop_processing()
+    if processing_state['is_processing']:
+        processing_state['stop_event'].set()
+        print(f"ℹ️ Processing will stop after current file completes")
+        logging.info("Stop signal sent - processing will halt")
+    else:
+        print(f"ℹ️ No active processing to stop")
+        logging.info("Stop requested but no active processing found")
     
     print(f"📋 Stop request processed successfully")
     return "ℹ️ Stop requested - processing will complete current file and halt"
@@ -311,17 +236,8 @@ def create_interface():
     with gr.Blocks(
         title="VLLM Caption Generator", 
         css_paths=["static/gallery.css"],
-        js="""
-        () => {
-            if (!window.location.href.includes('__theme=dark')) {
-                window.location.href += '?__theme=dark';
-            }
-        }
-        """,
-        theme=gr.themes.Monochrome(primary_hue="gray").set(
-            body_background_fill="*primary_950",
-            body_background_fill_dark="*primary_950"
-        )
+        js="() => { if (!window.location.href.includes('__theme=dark')) { window.location.href += '?__theme=dark'; } }",
+        theme="dark"
     ) as interface:
         
         gr.Markdown("# 🎯 VLLM Qwen2.5-Omni Caption Generator")
@@ -396,32 +312,11 @@ def create_interface():
             elem_id="gallery-container"
         )
         
-        # Event handlers
-        folder_input.change(
-            fn=validate_folder,
-            inputs=[folder_input],
-            outputs=[folder_status]
-        )
-        
-        # Process button - start processing
-        process_btn.click(
-            fn=process_folder_gui,
-            inputs=[folder_input, output_input, prompt_template, txt_format, json_format, csv_format],
-            outputs=[hf_gallery]
-        )
-        
-        # Dynamic grid size updating
-        grid_size_slider.change(
-            fn=None,
-            inputs=[grid_size_slider],
-            js="(size) => document.documentElement.style.setProperty('--gallery-grid-size', size + 'px')"
-        )
-        
-        # Stop button - fixed implementation
-        stop_btn.click(
-            fn=stop_processing_gui,
-            outputs=[stop_status]
-        )
+        # Event handlers - optimized inline
+        folder_input.change(validate_folder, folder_input, folder_status)
+        process_btn.click(process_folder_gui, [folder_input, output_input, prompt_template, txt_format, json_format, csv_format], hf_gallery)
+        grid_size_slider.change(None, grid_size_slider, js="(size) => document.documentElement.style.setProperty('--gallery-grid-size', size + 'px')")
+        stop_btn.click(stop_processing_gui, outputs=stop_status)
     
     return interface
 
@@ -437,8 +332,8 @@ if __name__ == "__main__":
         ]
     )
     
-    # Get universal allowed paths for full system access
-    allowed_paths = get_universal_allowed_paths()
+    # Get universal allowed paths - simplified
+    allowed_paths = ["/"] if Path("/").exists() else [f"{d}:\\" for d in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{d}:\\").exists()]
     
     print(f"🌐 Universal file system access enabled")
     print(f"📁 Allowed paths: {allowed_paths}")
