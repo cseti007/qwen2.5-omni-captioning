@@ -3,6 +3,5 @@ images/
 videos/
 __pycache__/
 *.py[cod]
-gradio_app.log
-config_arcane_tyle.toml
-readme_bak.md
+*.log
+*_bak.md
