@@ -38,7 +38,7 @@ class CaptionProcessor:
         Generator function for real-time Gallery updates with streaming results
         """
         if not folder_path or not Path(folder_path).exists():
-            yield [("error", "⚠ Invalid folder path!")]
+            yield [("error", "⚠️ Invalid folder path!")]
             return
         
         # Load config from file
@@ -59,14 +59,14 @@ class CaptionProcessor:
         # Find media files
         media_files = list_all_supported_files(folder_path)
         if not media_files:
-            yield [("error", "⚠ No supported media files found in folder!")]
+            yield [("error", "⚠️ No supported media files found in folder!")]
             return
         
         # Load model
         try:
             self.load_model(config)
         except Exception as e:
-            yield [("error", f"⚠ Model loading failed: {str(e)}")]
+            yield [("error", f"⚠️ Model loading failed: {str(e)}")]
             return
         
         gallery_results = []
@@ -109,7 +109,7 @@ class CaptionProcessor:
                 else:
                     gallery_results[-1] = (
                         str(media_file),
-                        f"⚠ FAILED ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nType: {media_type}\n\nFailed to generate caption"
+                        f"⚠️ FAILED ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nType: {media_type}\n\nFailed to generate caption"
                     )
                 
                 yield gallery_results
@@ -117,7 +117,7 @@ class CaptionProcessor:
             except Exception as e:
                 gallery_results[-1] = (
                     str(media_file),
-                    f"⚠ ERROR ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nError: {str(e)}"
+                    f"⚠️ ERROR ({i+1}/{len(media_files)})\n\n{media_file.name}\n\nError: {str(e)}"
                 )
                 yield gallery_results
         
@@ -126,7 +126,7 @@ class CaptionProcessor:
         
         if gallery_results:
             first_item = gallery_results[0]
-            summary_caption = f"{first_item[1]}\n\n📊 FINAL SUMMARY:\n✅ Successful: {successful}\n⚠ Failed: {failed}"
+            summary_caption = f"{first_item[1]}\n\n📊 FINAL SUMMARY:\n✅ Successful: {successful}\n⚠️ Failed: {failed}"
             gallery_results[0] = (first_item[0], summary_caption)
         
         yield gallery_results
@@ -159,7 +159,7 @@ class CaptionProcessor:
                 prompts_config = toml.load(f)
             config['prompts'] = prompts_config
         else:
-            print(f"⚠ Prompt file not found: {prompts_path}")
+            print(f"⚠️ Prompt file not found: {prompts_path}")
         
         return config
 
@@ -185,62 +185,30 @@ class CaptionProcessor:
 
 
 def create_hf_style_gallery(gallery_results):
-    """Create HuggingFace-style widget gallery with clean HTML"""
+    """Create HuggingFace-style widget gallery with compact HTML generation"""
     if not gallery_results:
         return '<div class="hf-gallery-empty">No results yet...</div>'
     
-    items_html = []
+    items = []
     for path, caption in gallery_results:
         if path == "error":
-            items_html.append(f"""
-            <div class="hf-gallery-item error">
-                <div class="error-content">⚠ Error</div>
-                <div class="caption">{caption}</div>
-            </div>
-            """)
+            items.append(f'<div class="hf-gallery-item error"><div class="caption">{caption}</div></div>')
             continue
-            
-        # Convert path for web serving
+        
+        # Convert path for web serving - fixed with try/catch
         try:
-            file_path = Path(path)
-            web_path = str(file_path).replace('\\', '/') if file_path.is_absolute() else str(file_path.relative_to(Path.cwd())).replace('\\', '/')
-        except Exception:
+            web_path = str(path).replace('\\', '/') if Path(path).is_absolute() else str(Path(path).relative_to(Path.cwd())).replace('\\', '/')
+        except ValueError:
             web_path = str(path).replace('\\', '/')
         
-        # Check if video or image
         is_video = Path(path).suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
         
         if is_video:
-            items_html.append(f"""
-            <div class="hf-gallery-item video" 
-                 onmouseover="this.querySelector('video').play().catch(e=>console.log('Video play failed:', e))" 
-                 onmouseout="const v=this.querySelector('video'); v.pause(); v.currentTime=0;"
-                 onclick="const v=this.querySelector('video'); if(v.paused) v.play(); else v.pause();">
-                <video muted loop preload="auto">
-                    <source src="/gradio_api/file={web_path}" type="video/mp4">
-                    Your browser does not support video playbook.
-                </source>
-                </video>
-                <div class="play-overlay">▶</div>
-                <div class="caption">{caption}</div>
-            </div>
-            """)
+            items.append(f'''<div class="hf-gallery-item video" onmouseover="this.querySelector('video').play().catch(e=>console.log('Video play failed:', e))" onmouseout="const v=this.querySelector('video'); v.pause(); v.currentTime=0;" onclick="const v=this.querySelector('video'); if(v.paused) v.play(); else v.pause();"><video muted loop preload="auto"><source src="/gradio_api/file={web_path}" type="video/mp4"></video><div class="play-overlay">▶</div><div class="caption">{caption}</div></div>''')
         else:
-            items_html.append(f"""
-            <div class="hf-gallery-item image" onclick="const img=this.querySelector('img'); window.open(img.src, '_blank');">
-                <img src="/gradio_api/file={web_path}" alt="Generated image" loading="lazy">
-                <div class="caption">{caption}</div>
-            </div>
-            """)
+            items.append(f'''<div class="hf-gallery-item image" onclick="window.open(this.querySelector('img').src, '_blank');"><img src="/gradio_api/file={web_path}" alt="Generated image" loading="lazy"><div class="caption">{caption}</div></div>''')
     
-    return f"""
-    <div class="hf-gallery-container">
-        <div class="hf-gallery" id="hf-gallery">
-            {''.join(items_html)}
-        </div>
-    </div>
-    """
-
+    return f'<div class="hf-gallery-container"><div class="hf-gallery" id="hf-gallery">{"".join(items)}</div></div>'
 
 def get_universal_allowed_paths():
     """Get universal allowed paths for all platforms (Windows, Linux, macOS)"""
@@ -276,10 +244,10 @@ def validate_folder(folder_path: str):
     
     path = Path(folder_path)
     if not path.exists():
-        return "⚠ Folder does not exist"
+        return "⚠️ Folder does not exist"
     
     if not path.is_dir():
-        return "⚠ Path is not a directory"
+        return "⚠️ Path is not a directory"
     
     try:
         media_files = list_all_supported_files(folder_path)
@@ -291,7 +259,7 @@ def validate_folder(folder_path: str):
         
         return f"✅ Found {len(media_files)} files ({video_count} videos, {image_count} images)"
     except Exception as e:
-        return f"⚠ Error scanning folder: {str(e)}"
+        return f"⚠️ Error scanning folder: {str(e)}"
 
 
 # Global processor instance
@@ -310,7 +278,7 @@ def process_folder_gui(folder_path: str, output_path: str, prompt_template: str,
         output_formats.append("csv")
     
     if not output_formats:
-        yield create_hf_style_gallery([("error", "⚠ Please select at least one output format!")])
+        yield create_hf_style_gallery([("error", "⚠️ Please select at least one output format!")])
         return
     
     # Start processing
