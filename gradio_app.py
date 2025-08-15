@@ -268,16 +268,18 @@ def create_interface():
                 with gr.Group():
                     # Row 1: Input folder + status
                     with gr.Row():
+                        default_input_path = "./videos"
+
                         folder_input = gr.Textbox(
                             label="📁 Input Folder Path",
                             placeholder="/path/to/your/media/folder",
-                            value=str(Path.cwd() / "images"),
+                            value=default_input_path,
                             scale=3
                         )
                         
                         folder_status = gr.Textbox(
                             label="📊 Folder Status",
-                            value="📁 Please enter a folder path",
+                            value=validate_folder(default_input_path),
                             interactive=False,
                             min_width=200,
                             scale=2
@@ -310,21 +312,13 @@ def create_interface():
         with gr.Row():
             process_btn = gr.Button("🚀 Start Processing", variant="primary", size="lg", scale=1)
             stop_btn = gr.Button("⏹️ Stop", variant="stop", size="lg", scale=1)
-            stop_status = gr.Textbox(
-                value="Control Status: Ready to process",
-                interactive=False,
-                show_label=False,
-                container=False,
-                scale=1
-            )
-        
-        # Real-time Results Gallery with size control
-        with gr.Row():
-            gr.Markdown("📸 Real-time Results Gallery")
             grid_size_slider = gr.Slider(
                 minimum=150, maximum=600, value=300, step=25,
                 label="🔍 Preview Size", scale=1
             )
+        
+        # Real-time Results Gallery
+        gr.Markdown("📸 Real-time Results Gallery")
         
         hf_gallery = gr.HTML(
             value=create_hf_style_gallery([]),
@@ -335,7 +329,7 @@ def create_interface():
         folder_input.change(validate_folder, folder_input, folder_status)
         process_btn.click(process_folder_gui, [folder_input, output_input, prompt_template, txt_format, json_format, csv_format], hf_gallery)
         grid_size_slider.change(None, grid_size_slider, js="(size) => document.documentElement.style.setProperty('--gallery-grid-size', size + 'px')")
-        stop_btn.click(stop_processing_gui, outputs=stop_status)
+        stop_btn.click(stop_processing_gui)
     
     return interface
 
